@@ -53,6 +53,8 @@ pub struct AppState {
     pub guest_log: Mutex<VecDeque<Instant>>,
     pub rpc_ips: Mutex<std::collections::HashMap<String, VecDeque<Instant>>>,
     pub rpc_cursor: std::sync::atomic::AtomicUsize,
+    /// Wakes the payment keeper right away (a payment this server just sent should not wait for the next tick).
+    pub keeper_wake: tokio::sync::Notify,
     pub keeper_txs: Mutex<std::collections::HashMap<String, (String, String)>>,
     pub http: reqwest::Client,
 }
@@ -478,9 +480,14 @@ pub async fn run_action(st: &AppState, persona: &str, action: &str, p: &Value) -
                 parse_usdc(&p["amount"])?
             };
             let token = st.chain.token.clone();
-            st.chain
+            let out = st
+                .chain
                 .call(&who, &token, "ft_transfer", json!({ "receiver_id": id, "amount": micro(amount) }), NearToken::from_yoctonear(1), 30)
-                .await
+                .await?;
+            if out.ok {
+                st.keeper_wake.notify_one();
+            }
+            Ok(out)
         }
         "sync" => st.chain.call(&who, &reg, "sync", json!({ "id": id_of(p)? }), NearToken::from_yoctonear(0), 50).await,
         "claim" => st.chain.call(&who, &reg, "claim", json!({ "id": id_of(p)? }), NearToken::from_yoctonear(0), 150).await,
@@ -572,6 +579,8 @@ async fn run_dao_action(st: &AppState, dao: &crate::config::DaoCfg, action: &str
         if status["status"] != "Approved" {
             out.ok = false;
             out.error = Some(out.soft_error.clone().unwrap_or_else(|| format!("the proposal ended as {}", status["status"])));
+        } else if action == "pay" {
+            st.keeper_wake.notify_one();
         }
     }
     Ok(out)

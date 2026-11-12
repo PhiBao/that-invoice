@@ -29,7 +29,10 @@ pub async fn run(st: Shared) {
     let mut last_claimed_scan = Instant::now() - CLAIMED_EVERY;
 
     loop {
-        tokio::time::sleep(TICK).await;
+        tokio::select! {
+            _ = tokio::time::sleep(TICK) => {}
+            _ = st.keeper_wake.notified() => {}
+        }
         let scan_claimed = last_claimed_scan.elapsed() >= CLAIMED_EVERY;
         if scan_claimed {
             last_claimed_scan = Instant::now();

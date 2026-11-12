@@ -46,6 +46,7 @@ async fn main() -> anyhow::Result<()> {
         guest_log: Mutex::new(VecDeque::new()),
         rpc_ips: Mutex::new(HashMap::new()),
         rpc_cursor: std::sync::atomic::AtomicUsize::new(0),
+        keeper_wake: tokio::sync::Notify::new(),
         keeper_txs: Mutex::new(HashMap::new()),
         http: reqwest::Client::builder().user_agent("that-invoice-api/0.1").build()?,
     });
