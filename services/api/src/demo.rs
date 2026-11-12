@@ -48,13 +48,13 @@ pub fn stream(st: Shared) -> impl Stream<Item = Value> {
         // (index, id, persona, title, expected_reject)
         let plan: [(usize, &str, &str, &str, bool); 9] = [
             (1, "issue", "studio", "Studio Nine issues a $1,200 invoice to Acme DAO. It becomes its own NEAR account.", false),
-            (2, "issue_again", "studio", "Studio Nine tries to issue the same invoice again.", true),
-            (3, "confirm", "acme", "Acme DAO confirms it owes the invoice.", false),
+            (2, "issue_again", "studio", "Attack: Studio Nine issues the same invoice a second time.", true),
+            (3, "confirm", "acme", "Acme DAO confirms it owes the invoice: a proposal is filed, a council member approves it, and the DAO calls the registry.", false),
             (4, "list", "studio", "Studio Nine lists the invoice for $1,176.", false),
             (5, "buy", "fund", "Northfield Fund buys it. Ownership and the cash move in one receipt.", false),
-            (6, "relist", "studio", "Studio Nine tries to sell it a second time.", true),
-            (7, "pay", "acme", "Acme DAO pays the invoice account directly.", false),
-            (8, "sync", "fund", "The registry reads the invoice account's balance and marks it paid.", false),
+            (6, "relist", "studio", "Attack: Studio Nine tries to sell the invoice again after selling it.", true),
+            (7, "pay", "acme", "Acme DAO pays the invoice account from its treasury, also by proposal.", false),
+            (8, "record", "fund", "The server notices the payment and records it. Nobody presses a button.", false),
             (9, "claim", "fund", "Northfield Fund, the current owner, claims the payment.", false),
         ];
 
@@ -71,12 +71,16 @@ pub fn stream(st: Shared) -> impl Stream<Item = Value> {
                 "buy" => ("buy", json!({ "id": invoice_id })),
                 "relist" => ("list", json!({ "id": invoice_id, "price": PRICE })),
                 "pay" => ("pay", json!({ "id": invoice_id })),
-                "sync" => ("sync", json!({ "id": invoice_id })),
+                "record" => ("sync", json!({ "id": invoice_id })),
                 "claim" => ("claim", json!({ "id": invoice_id })),
                 _ => unreachable!(),
             };
 
-            let outcome = run_action(&st, persona, action, &params).await;
+            let outcome = if id == "record" {
+                record_step(&st, &invoice_id).await
+            } else {
+                run_action(&st, persona, action, &params).await
+            };
             let outcome = match outcome {
                 Ok(o) => o,
                 Err(e) => {
@@ -115,14 +119,15 @@ pub fn stream(st: Shared) -> impl Stream<Item = Value> {
                     }
                 }
             }
-            if id == "sync" || id == "claim" {
+            if id == "record" || id == "claim" {
                 // These settle in callbacks; wait for the registry to reflect them.
-                let want = if id == "sync" { "Paid" } else { "Claimed" };
+                let want = if id == "record" { "Paid" } else { "Claimed" };
                 let _ = wait_status(&st, &invoice_id, want).await;
             }
             yield send!(json!({ "kind": "step", "index": index, "total": total, "id": id, "status": "ok",
                 "title": title, "actor": actor, "tx": outcome.hash, "explorer_url": outcome.explorer_url,
-                "events": outcome.events, "gas_tgas": outcome.gas_tgas, "invoice_id": invoice_id }));
+                "events": outcome.events, "gas_tgas": outcome.gas_tgas, "extras": outcome.extras,
+                "note": if id == "record" { Some("recorded automatically") } else { None }, "invoice_id": invoice_id }));
         }
 
         *st.state_cache.lock().await = None;
@@ -133,6 +138,24 @@ pub fn stream(st: Shared) -> impl Stream<Item = Value> {
         };
         yield send!(json!({ "kind": "done", "invoice_id": invoice_id, "invoice": final_inv }));
     }
+}
+
+/// Wait for the keeper to record the payment. If it is not running or is slow, record it ourselves so the
+/// demo never hangs: `sync` is callable by anyone.
+async fn record_step(st: &Shared, id: &str) -> anyhow::Result<crate::chain::TxOutcome> {
+    for _ in 0..16 {
+        if let Ok(Some(i)) = st.chain.registry_view::<Option<Value>>("invoice", json!({ "id": id })).await {
+            if i["status"] == "Paid" {
+                let known = st.keeper_txs.lock().await.get(id).cloned();
+                let (hash, url) = known.unwrap_or_default();
+                return Ok(crate::chain::TxOutcome {
+                    ok: true, hash, explorer_url: url, error: None, events: vec![], gas_tgas: 0.0, extras: vec![], ret: None, soft_error: None,
+                });
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+    }
+    run_action(st, "fund", "sync", &json!({ "id": id })).await
 }
 
 async fn find_by_number(st: &Shared, number: &str) -> Option<String> {
@@ -181,6 +204,18 @@ async fn top_up(st: &Shared) -> anyhow::Result<String> {
     let mut moved = Vec::new();
     for (persona, need) in [("acme", 2_400_000_000u128), ("fund", 2_400_000_000u128)] {
         let acct = persona_account(st, persona)?;
+        // The DAO account must be registered on the token before it can hold USDC.
+        let registered: Value = st.chain.view(&token, "storage_balance_of", json!({ "account_id": acct })).await.unwrap_or(Value::Null);
+        if registered.is_null() {
+            let out = st
+                .chain
+                .call(&token, &token, "storage_deposit", json!({ "account_id": acct, "registration_only": true }),
+                    near_api::types::NearToken::from_millinear(2), 30)
+                .await?;
+            if !out.ok {
+                anyhow::bail!("could not register {persona} on the token: {}", out.error.unwrap_or_default());
+            }
+        }
         let have = st.chain.usdc_balance(&acct).await.unwrap_or(0);
         if have >= need {
             continue;

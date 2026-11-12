@@ -91,8 +91,11 @@ fn value(p: PromiseOrValue<U128>) -> u128 {
 
 fn mark_paid(r: &mut Registry, id: &AccountId, balance: u128) -> bool {
     with_results(REGISTRY, vec![ok(format!("\"{balance}\"").as_bytes())]);
-    r.on_synced(id.clone())
+    // The balance read started now, which is after any earlier claim in these tests.
+    r.on_synced(id.clone(), U64(NOW_MS + 1))
 }
+
+const NOW_MS: u64 = 1_000_000_000;
 
 #[test]
 fn issue_creates_issued_invoice_owned_by_issuer() {
@@ -518,7 +521,9 @@ fn a_sync_result_from_before_a_sale_cannot_pay_a_claimed_invoice_twice() {
     let _ = r.claim(id.clone());
     with_results(REGISTRY, vec![ok(b"")]);
     r.on_claimed(id.clone(), acc("studio.test.near"), U128(FACE));
-    assert!(!mark_paid(&mut r, &id, FACE));
+    // a sync that began before the claim lands late and still reports the old balance
+    with_results(REGISTRY, vec![ok(format!("\"{FACE}\"").as_bytes())]);
+    assert!(!r.on_synced(id.clone(), U64(NOW_MS - 5)));
     assert_eq!(r.invoice(id).unwrap().status, Status::Claimed);
 }
 
@@ -544,4 +549,144 @@ fn the_log_never_grows_without_bound() {
     let inv = r.invoice(id).unwrap();
     assert!(inv.log.len() <= MAX_LOG);
     assert_eq!(inv.log[0].kind, Kind::Issued);
+}
+
+// ───────── money that arrives after the invoice was collected ─────────
+
+fn claimed(r: &mut Registry) -> AccountId {
+    let id = confirmed(r);
+    mark_paid(r, &id, FACE);
+    at("studio.test.near");
+    let _ = r.claim(id.clone());
+    with_results(REGISTRY, vec![ok(b"")]);
+    assert!(r.on_claimed(id.clone(), acc("studio.test.near"), U128(FACE)));
+    id
+}
+
+#[test]
+fn money_arriving_after_collection_reopens_the_invoice_for_the_owner() {
+    let mut r = fresh();
+    let id = claimed(&mut r);
+    assert!(mark_paid(&mut r, &id, 300));
+    let inv = r.invoice(id.clone()).unwrap();
+    assert_eq!(inv.status, Status::Paid);
+    assert_eq!(inv.received.0, 300);
+    assert_eq!(inv.log.last().unwrap().kind, Kind::ToppedUp);
+    // the owner can collect it, and nobody else
+    at("studio.test.near");
+    let _ = r.claim(id);
+}
+
+#[test]
+#[should_panic(expected = "only the current owner can claim")]
+fn a_top_up_belongs_to_the_owner_at_that_moment_not_the_original_issuer() {
+    let mut r = fresh();
+    let id = claimed(&mut r);
+    testing_env!(ctx("studio.test.near", NearToken::from_yoctonear(1)).build());
+    r.nft_transfer(acc("friend.test.near"), id.to_string(), None, None);
+    assert!(mark_paid(&mut r, &id, 300));
+    at("studio.test.near");
+    let _ = r.claim(id);
+}
+
+#[test]
+fn a_balance_read_that_started_before_the_claim_cannot_reopen_the_invoice() {
+    let mut r = fresh();
+    let id = claimed(&mut r);
+    // A sync that began at NOW_MS - 1000 returns the pre-claim balance after the claim completed.
+    with_results(REGISTRY, vec![ok(format!("\"{FACE}\"").as_bytes())]);
+    assert!(!r.on_synced(id.clone(), U64(NOW_MS - 1000)));
+    assert_eq!(r.invoice(id).unwrap().status, Status::Claimed);
+}
+
+#[test]
+fn a_zero_balance_does_not_reopen_a_claimed_invoice() {
+    let mut r = fresh();
+    let id = claimed(&mut r);
+    assert!(!mark_paid(&mut r, &id, 0));
+    assert_eq!(r.invoice(id).unwrap().status, Status::Claimed);
+}
+
+#[test]
+fn a_top_up_does_not_count_twice_in_the_client_record() {
+    let mut r = fresh();
+    let id = claimed(&mut r);
+    let before = r.debtor_record(acc("acme.test.near")).paid;
+    assert!(mark_paid(&mut r, &id, 300));
+    assert_eq!(r.debtor_record(acc("acme.test.near")).paid, before);
+}
+
+#[test]
+fn a_claimed_invoice_can_be_synced() {
+    let mut r = fresh();
+    let id = claimed(&mut r);
+    at("anyone.test.near");
+    let _ = r.sync(id);
+}
+
+// ───────── dynamic NFT metadata ─────────
+
+#[test]
+fn the_token_carries_a_live_svg_that_follows_the_status() {
+    let mut r = fresh();
+    let id = confirmed(&mut r);
+    let t = r.nft_token(id.to_string()).unwrap();
+    let m = t.metadata.unwrap();
+    let media = m.media.unwrap();
+    assert!(media.starts_with("data:image/svg+xml;utf8,%3Csvg"));
+    assert!(media.contains("CONFIRMED"));
+    assert!(m.title.unwrap().contains("1,200"));
+    // list it: the stamp changes without anyone touching the metadata
+    at("studio.test.near");
+    r.list(id.clone(), U128(PRICE));
+    let media = r.nft_token(id.to_string()).unwrap().metadata.unwrap().media.unwrap();
+    assert!(media.contains("FOR SALE"));
+    assert!(!media.contains("CONFIRMED"));
+}
+
+#[test]
+fn the_svg_data_uri_has_no_characters_that_break_a_data_uri() {
+    let mut r = fresh();
+    let id = confirmed(&mut r);
+    let media = r.nft_token(id.to_string()).unwrap().metadata.unwrap().media.unwrap();
+    let body = media.trim_start_matches("data:image/svg+xml;utf8,");
+    assert!(!body.contains('<') && !body.contains('>') && !body.contains('#') && !body.contains('"'));
+}
+
+#[test]
+fn hostile_invoice_numbers_cannot_break_out_of_the_svg() {
+    let mut r = fresh();
+    testing_env!(ctx("studio.test.near", ISSUE_DEPOSIT).build());
+    let _ = r.issue(acc("acme.test.near"), "<script>&'x".into(), U128(FACE), U64(2_000_000_000), "h".into());
+    with_results(REGISTRY, vec![ok(b""), ok(b"{}")]);
+    r.on_created(inv_id(1), acc("studio.test.near"), U128(0));
+    let media = r.nft_token(inv_id(1).to_string()).unwrap().metadata.unwrap().media.unwrap();
+    assert!(!media.contains("%3Cscript"));
+    assert!(media.contains("&amp;lt;script&amp;gt;") || media.contains("&lt;script&gt;"));
+}
+
+#[test]
+fn an_overdue_open_invoice_is_stamped_overdue() {
+    let mut r = fresh();
+    testing_env!(ctx("studio.test.near", ISSUE_DEPOSIT).build());
+    let _ = r.issue(acc("acme.test.near"), "late".into(), U128(FACE), U64(1_000), "h".into());
+    with_results(REGISTRY, vec![ok(b""), ok(b"{}")]);
+    r.on_created(inv_id(1), acc("studio.test.near"), U128(0));
+    let media = r.nft_token(inv_id(1).to_string()).unwrap().metadata.unwrap().media.unwrap();
+    assert!(media.contains("OVERDUE"));
+}
+
+#[test]
+fn collection_metadata_has_an_icon() {
+    let r = fresh();
+    assert!(r.nft_metadata().icon.unwrap().starts_with("data:image/svg+xml"));
+}
+
+#[test]
+fn dollars_and_dates_format_correctly() {
+    assert_eq!(crate::svg::dollars(1_200_000_000), "1,200");
+    assert_eq!(crate::svg::dollars(1_176_500_000), "1,176.50");
+    assert_eq!(crate::svg::dollars(999_999), "0.99");
+    assert_eq!(crate::svg::ymd(0), "1970-01-01");
+    assert_eq!(crate::svg::ymd(1_794_481_597_903), "2026-11-12");
 }

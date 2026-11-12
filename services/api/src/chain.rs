@@ -31,6 +31,19 @@ pub struct TxOutcome {
     /// Parsed `EVENT_JSON:` lines (NEP-171 and `endorse` events).
     pub events: Vec<Value>,
     pub gas_tgas: f64,
+    /// Related transactions (for a DAO action: the proposal that was filed before this approval).
+    pub extras: Vec<Extra>,
+    /// Value returned by the call, when it returned JSON (for example a new proposal id).
+    pub ret: Option<Value>,
+    /// A failure in a later receipt even though the first one succeeded (for example a DAO proposal that approved, then failed).
+    pub soft_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Extra {
+    pub label: String,
+    pub hash: String,
+    pub explorer_url: String,
 }
 
 impl Chain {
@@ -130,8 +143,15 @@ impl Chain {
             .collect();
         let gas_tgas = res.total_gas_burnt.as_gas() as f64 / 1e12;
         let explorer_url = format!("{}/txns/{}", self.explorer, hash);
+        let soft_error = res
+            .receipt_failures()
+            .first()
+            .map(|o| clean_error(&format!("{o:?}")));
         match res.into_result() {
-            Ok(_) => Ok(TxOutcome { ok: true, hash, explorer_url, error: None, events, gas_tgas }),
+            Ok(success) => {
+                let ret = success.json::<Value>().ok();
+                Ok(TxOutcome { ok: true, hash, explorer_url, error: None, events, gas_tgas, extras: vec![], ret, soft_error })
+            }
             Err(f) => Ok(TxOutcome {
                 ok: false,
                 hash,
@@ -139,6 +159,9 @@ impl Chain {
                 error: Some(clean_error(&format!("{f:?}"))),
                 events,
                 gas_tgas,
+                extras: vec![],
+                ret: None,
+                soft_error,
             }),
         }
     }

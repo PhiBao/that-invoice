@@ -192,7 +192,7 @@ label.field > span { display: block; margin-bottom: 6px; }
 .step .dot { width: 26px; height: 26px; border: 1.5px solid var(--rule-2); display: grid; place-items: center; font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); background: var(--paper); }
 .step.running .dot { border-color: var(--ink); color: var(--ink); }
 .step.ok .dot { background: var(--green); border-color: var(--green); color: var(--sheet); }
-.step.rejected .dot { background: var(--stamp); border-color: var(--stamp); color: var(--sheet); }
+.step.rejected .dot { background: var(--green); border-color: var(--green); color: var(--sheet); }
 .step.error .dot { background: var(--ink); color: var(--sheet); }
 .step.pending { opacity: 0.45; }
 .step .t { font-size: 15px; line-height: 1.35; }

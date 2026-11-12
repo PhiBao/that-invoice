@@ -47,6 +47,8 @@ pub struct AppState {
     pub demo_log: Mutex<VecDeque<Instant>>,
     pub quote_cache: Mutex<std::collections::HashMap<String, (Instant, Value)>>,
     pub state_cache: Mutex<Option<(Instant, Value)>>,
+    /// Last payment-recording transaction the keeper sent per invoice, so the demo can link it.
+    pub keeper_txs: Mutex<std::collections::HashMap<String, (String, String)>>,
     pub http: reqwest::Client,
 }
 
@@ -221,7 +223,14 @@ async fn get_state(State(st): State<Shared>) -> Result<Json<Value>, ApiError> {
             json!({
                 "key": p.key, "account": p.account, "name": p.name, "role": p.role,
                 "blurb": p.blurb, "usdc": micro(bal),
-                "can_sign": acct.map(|a| st.chain.can_sign(&a)).unwrap_or(false),
+                "can_sign": match (&st.cfg.dao, p.key) {
+                    (Some(d), "acme") => {
+                        let ok = |s: &str| s.parse::<AccountId>().map(|a| st.chain.can_sign(&a)).unwrap_or(false);
+                        ok(&d.proposer) && ok(&d.council)
+                    }
+                    _ => acct.map(|a| st.chain.can_sign(&a)).unwrap_or(false),
+                },
+                "is_dao": p.key == "acme" && st.cfg.dao.is_some(),
             })
         }
     });
@@ -252,6 +261,7 @@ async fn get_state(State(st): State<Shared>) -> Result<Json<Value>, ApiError> {
         "token": st.cfg.token,
         "explorer": st.cfg.explorer,
         "registry_config": reg_cfg,
+        "dao": st.cfg.dao.as_ref().map(|d| json!({ "account": d.account, "proposer": d.proposer, "council": d.council })),
         "stale": stale,
         "personas": personas,
         "invoices": invoices,
@@ -384,6 +394,11 @@ pub fn persona_account(st: &AppState, key: &str) -> Result<AccountId> {
 
 /// Execute one product action on behalf of a demo persona.
 pub async fn run_action(st: &AppState, persona: &str, action: &str, p: &Value) -> Result<TxOutcome> {
+    if persona == "acme" {
+        if let Some(dao) = st.cfg.dao.clone() {
+            return run_dao_action(st, &dao, action, p).await;
+        }
+    }
     let who = persona_account(st, persona)?;
     let reg = st.chain.registry.clone();
     let id_of = |p: &Value| -> Result<AccountId> {
@@ -462,6 +477,108 @@ pub async fn run_action(st: &AppState, persona: &str, action: &str, p: &Value) -
         "claim" => st.chain.call(&who, &reg, "claim", json!({ "id": id_of(p)? }), NearToken::from_yoctonear(0), 150).await,
         "withdraw" => st.chain.call(&who, &reg, "withdraw_proceeds", json!({}), NearToken::from_yoctonear(0), 60).await,
         other => bail!("unknown action {other}"),
+    }
+}
+
+/// Acme is a real Sputnik DAO. Anything it "does" is a proposal that a council member approves; the DAO
+/// contract then makes the call itself, so the registry sees the DAO account as the caller.
+async fn run_dao_action(st: &AppState, dao: &crate::config::DaoCfg, action: &str, p: &Value) -> Result<TxOutcome> {
+    let dao_id: AccountId = dao.account.parse()?;
+    let proposer: AccountId = dao.proposer.parse()?;
+    let council: AccountId = dao.council.parse()?;
+    let reg = st.chain.registry.clone();
+    let token = st.chain.token.clone();
+    let id = |p: &Value| -> Result<AccountId> {
+        let id = p["id"].as_str().ok_or_else(|| anyhow!("id is required"))?;
+        parse_invoice_id(st, id).map_err(|e| anyhow!(e.1))
+    };
+    let (receiver, method, args, deposit, gas, description) = match action {
+        "confirm" => {
+            let i = id(p)?;
+            let inv: Option<Value> = st.chain.registry_view("invoice", json!({ "id": i })).await?;
+            let inv = inv.ok_or_else(|| anyhow!("no such invoice"))?;
+            (
+                reg,
+                "confirm",
+                json!({ "id": i }),
+                "0".to_string(),
+                60_000_000_000_000u64,
+                format!(
+                    "Confirm invoice {} from {} for ${}",
+                    inv["number"].as_str().unwrap_or("?"),
+                    inv["issuer"].as_str().unwrap_or("?"),
+                    inv["amount"].as_str().and_then(|a| a.parse::<u128>().ok()).map(|a| a / 1_000_000).unwrap_or(0)
+                ),
+            )
+        }
+        "pay" => {
+            let i = id(p)?;
+            let inv: Option<Value> = st.chain.registry_view("invoice", json!({ "id": i })).await?;
+            let inv = inv.ok_or_else(|| anyhow!("no such invoice"))?;
+            let amount = if p["amount"].is_null() {
+                inv["amount"].as_str().and_then(|s| s.parse::<u128>().ok()).ok_or_else(|| anyhow!("no such invoice"))?
+            } else {
+                parse_usdc(&p["amount"])?
+            };
+            (
+                token,
+                "ft_transfer",
+                json!({ "receiver_id": i, "amount": micro(amount) }),
+                "1".to_string(),
+                30_000_000_000_000u64,
+                format!("Pay invoice {} (${})", inv["number"].as_str().unwrap_or("?"), amount / 1_000_000),
+            )
+        }
+        other => bail!("the DAO persona can confirm and pay invoices, not {other}"),
+    };
+
+    use base64_engine as b64;
+    let kind = json!({ "FunctionCall": { "receiver_id": receiver, "actions": [{
+        "method_name": method, "args": b64::encode(args.to_string()), "deposit": deposit, "gas": gas.to_string() }] } });
+    // 1. a proposer files the proposal (the bond is returned when it is approved)
+    let filed = st
+        .chain
+        .call(&proposer, &dao_id, "add_proposal", json!({ "proposal": { "description": description, "kind": kind } }),
+            NearToken::from_near(1), 30)
+        .await?;
+    if !filed.ok {
+        return Ok(filed);
+    }
+    let pid = filed.ret.as_ref().and_then(|v| v.as_u64()).ok_or_else(|| anyhow!("the DAO did not return a proposal id"))?;
+    // 2. a council member approves it; the DAO then makes the call
+    let mut out = st
+        .chain
+        .call(&council, &dao_id, "act_proposal", json!({ "id": pid, "action": "VoteApprove" }), NearToken::from_yoctonear(0), 250)
+        .await?;
+    out.extras.insert(0, crate::chain::Extra {
+        label: format!("proposal #{pid}"),
+        hash: filed.hash.clone(),
+        explorer_url: filed.explorer_url.clone(),
+    });
+    if out.ok {
+        // The approval can succeed while the DAO's call fails (the proposal then ends up Failed).
+        let status: Value = st.chain.view(&dao_id, "get_proposal", json!({ "id": pid })).await.unwrap_or(Value::Null);
+        if status["status"] != "Approved" {
+            out.ok = false;
+            out.error = Some(out.soft_error.clone().unwrap_or_else(|| format!("the proposal ended as {}", status["status"])));
+        }
+    }
+    Ok(out)
+}
+
+mod base64_engine {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    pub fn encode(s: String) -> String {
+        let b = s.as_bytes();
+        let mut o = String::with_capacity(b.len().div_ceil(3) * 4);
+        for c in b.chunks(3) {
+            let n = (c[0] as u32) << 16 | (*c.get(1).unwrap_or(&0) as u32) << 8 | *c.get(2).unwrap_or(&0) as u32;
+            o.push(T[(n >> 18 & 63) as usize] as char);
+            o.push(T[(n >> 12 & 63) as usize] as char);
+            o.push(if c.len() > 1 { T[(n >> 6 & 63) as usize] as char } else { '=' });
+            o.push(if c.len() > 2 { T[(n & 63) as usize] as char } else { '=' });
+        }
+        o
     }
 }
 

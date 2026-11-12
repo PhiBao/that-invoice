@@ -13,6 +13,15 @@ pub struct PersonaCfg {
     pub blurb: &'static str,
 }
 
+/// The client side of the demo is a real Sputnik DAO: a proposer files a proposal, a council member approves it,
+/// and the DAO itself calls the registry (so the DAO account is the invoice's debtor).
+#[derive(Clone, Debug)]
+pub struct DaoCfg {
+    pub account: String,
+    pub proposer: String,
+    pub council: String,
+}
+
 #[derive(Clone)]
 pub struct Config {
     pub port: u16,
@@ -27,6 +36,9 @@ pub struct Config {
     pub data_dir: PathBuf,
     pub allowed_origin: Option<String>,
     pub oneclick_jwt: Option<String>,
+    pub dao: Option<DaoCfg>,
+    /// Account that signs the automatic payment-recording transactions (and funds the demo wallets).
+    pub keeper: String,
 }
 
 impl Config {
@@ -42,7 +54,16 @@ impl Config {
         let registry = env::var("REGISTRY_ACCOUNT").context("REGISTRY_ACCOUNT is required")?;
         let token = env::var("USDC_ACCOUNT").unwrap_or_else(|_| "endorse-usdc.testnet".into());
         let studio = env::var("PERSONA_STUDIO").unwrap_or_else(|_| "endorse-studio.testnet".into());
-        let acme = env::var("PERSONA_ACME").unwrap_or_else(|_| "endorse-acme.testnet".into());
+        let dao = env::var("ACME_DAO").ok().map(|account| DaoCfg {
+            account,
+            proposer: env::var("ACME_PROPOSER").unwrap_or_else(|_| "endorse-acme.testnet".into()),
+            council: env::var("ACME_COUNCIL").unwrap_or_else(|_| "council.endorse-fund.testnet".into()),
+        });
+        // With a DAO configured, the Acme persona *is* the DAO account.
+        let acme = match &dao {
+            Some(d) => d.account.clone(),
+            None => env::var("PERSONA_ACME").unwrap_or_else(|_| "endorse-acme.testnet".into()),
+        };
         let fund = env::var("PERSONA_FUND").unwrap_or_else(|_| "endorse-fund.testnet".into());
         let personas = vec![
             PersonaCfg {
@@ -82,7 +103,11 @@ impl Config {
                 .map(|h| PathBuf::from(h).join(".near-credentials"))
         });
         let mut accounts: Vec<String> = personas.iter().map(|p| p.account.clone()).collect();
-        accounts.push(token.clone()); // the token account funds the demo wallets
+        accounts.push(token.clone()); // the token account funds the demo wallets and records payments
+        if let Some(d) = &dao {
+            accounts.push(d.proposer.clone());
+            accounts.push(d.council.clone());
+        }
         for account in &accounts {
             if secret_keys.contains_key(account) {
                 continue;
@@ -107,6 +132,7 @@ impl Config {
             }
         });
 
+        let keeper = token.clone();
         Ok(Self {
             port: env::var("PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(8787),
             network,
@@ -119,6 +145,8 @@ impl Config {
             data_dir: env::var("DATA_DIR").map(PathBuf::from).unwrap_or_else(|_| "data".into()),
             allowed_origin: env::var("ALLOWED_ORIGIN").ok(),
             oneclick_jwt: env::var("ONECLICK_JWT").ok(),
+            dao,
+            keeper,
         })
     }
 }

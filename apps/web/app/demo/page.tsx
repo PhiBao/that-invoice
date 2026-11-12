@@ -14,18 +14,19 @@ interface StepState {
   error?: string | null;
   note?: string;
   gas?: number;
+  extras?: { label: string; hash: string; explorer_url: string }[];
 }
 
 const PLAN: { id: string; index: number; title: string }[] = [
   { id: "fund", index: 0, title: "Check the demo wallets" },
   { id: "issue", index: 1, title: "Studio Nine issues a $1,200 invoice to Acme DAO. It becomes its own NEAR account." },
-  { id: "issue_again", index: 2, title: "Studio Nine tries to issue the same invoice again." },
-  { id: "confirm", index: 3, title: "Acme DAO confirms it owes the invoice." },
+  { id: "issue_again", index: 2, title: "Attack: Studio Nine issues the same invoice a second time." },
+  { id: "confirm", index: 3, title: "Acme DAO confirms it owes the invoice: a proposal is filed, a council member approves it, and the DAO calls the registry." },
   { id: "list", index: 4, title: "Studio Nine lists the invoice for $1,176." },
   { id: "buy", index: 5, title: "Northfield Fund buys it. Ownership and the cash move in one receipt." },
-  { id: "relist", index: 6, title: "Studio Nine tries to sell it a second time." },
-  { id: "pay", index: 7, title: "Acme DAO pays the invoice account directly." },
-  { id: "sync", index: 8, title: "The registry reads the invoice account's balance and marks it paid." },
+  { id: "relist", index: 6, title: "Attack: Studio Nine tries to sell the invoice again after selling it." },
+  { id: "pay", index: 7, title: "Acme DAO pays the invoice account from its treasury, also by proposal." },
+  { id: "record", index: 8, title: "The server notices the payment and records it. Nobody presses a button." },
   { id: "claim", index: 9, title: "Northfield Fund, the current owner, claims the payment." },
 ];
 
@@ -119,7 +120,7 @@ export default function DemoPage() {
       const id = PLAN.find((p) => p.index === m.index)?.id ?? m.id;
       setSteps((s) => ({
         ...s,
-        [id]: { status: m.status, actor: m.actor, tx: m.tx, url: m.explorer_url, error: m.error, note: m.note, gas: m.gas_tgas },
+        [id]: { status: m.status, actor: m.actor, tx: m.tx, url: m.explorer_url, error: m.error, note: m.note, gas: m.gas_tgas, extras: m.extras },
       }));
       if (m.invoice_id) setInvoiceId(m.invoice_id);
       if (m.index >= 5 && m.status === "ok") setFlipped(true);
@@ -142,7 +143,7 @@ export default function DemoPage() {
       <h1 className="h2" style={{ fontSize: 46, maxWidth: "20ch", marginBottom: 10 }}>An invoice, sold once, paid once.</h1>
       <p className="lede" style={{ marginBottom: 28, fontSize: 16 }}>
         Press run and watch three accounts issue, confirm, sell, pay and collect one invoice. Each line is a
-        real transaction. The two red steps are attempts the contract refuses.
+        real transaction. The two stamped BLOCKED steps are attacks the contract must refuse.
       </p>
 
       <div className="cols demo-cols">
@@ -162,7 +163,7 @@ export default function DemoPage() {
               return (
                 <li key={p.id} className={`step ${st}`}>
                   <span className="dot" aria-hidden>
-                    {st === "ok" ? "✓" : st === "rejected" ? "✕" : st === "error" ? "!" : st === "running" ? <span className="spin" /> : p.index}
+                    {st === "ok" || st === "rejected" ? "✓" : st === "error" ? "!" : st === "running" ? <span className="spin" /> : p.index}
                   </span>
                   <div>
                     <div className="t">{p.title}</div>
@@ -171,11 +172,18 @@ export default function DemoPage() {
                         {s.actor && <span>{s.actor}</span>}
                         {s.note && <span>{s.note}</span>}
                         {s.gas !== undefined && <span>{s.gas.toFixed(1)} Tgas</span>}
-                        {s.url && <a href={s.url} target="_blank" rel="noreferrer">{s.tx?.slice(0, 10)}… ↗</a>}
+                        {s.extras?.map((x) => (
+                          <a key={x.hash} href={x.explorer_url} target="_blank" rel="noreferrer">{x.label} ↗</a>
+                        ))}
+                        {s.url && s.tx && <a href={s.url} target="_blank" rel="noreferrer">{p.id === "confirm" || p.id === "pay" ? "approval" : "tx"} {s.tx.slice(0, 8)}… ↗</a>}
                       </div>
                     )}
                     {st === "rejected" && (
-                      <div className="why note"><b>Refused by the contract:</b> {s?.error}</div>
+                      <div className="why note green">
+                        <span className="stamp-tag red" style={{ marginRight: 10 }}>Blocked</span>
+                        <b>The contract refused this, as it should.</b>
+                        <div style={{ marginTop: 6 }} className="mono">{s?.error}</div>
+                      </div>
                     )}
                     {st === "error" && <div className="why note"><b>Stopped:</b> {s?.error}</div>}
                   </div>

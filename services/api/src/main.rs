@@ -2,6 +2,7 @@ mod app;
 mod chain;
 mod config;
 mod demo;
+mod keeper;
 mod quote;
 
 use std::{
@@ -40,6 +41,7 @@ async fn main() -> anyhow::Result<()> {
         demo_log: Mutex::new(VecDeque::new()),
         quote_cache: Mutex::new(HashMap::new()),
         state_cache: Mutex::new(None),
+        keeper_txs: Mutex::new(HashMap::new()),
         http: reqwest::Client::builder().user_agent("that-invoice-api/0.1").build()?,
     });
 
@@ -50,6 +52,7 @@ async fn main() -> anyhow::Result<()> {
         Err(_) => tracing::warn!("initial read timed out, continuing"),
     }
     tokio::spawn(app::poll_loop(state.clone()));
+    tokio::spawn(keeper::run(state.clone()));
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", port)).await?;
     tracing::info!("listening on :{port}");
     axum::serve(listener, app::router(state)).await?;

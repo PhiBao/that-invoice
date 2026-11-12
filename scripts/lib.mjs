@@ -72,3 +72,29 @@ export async function createSubAccount(funder, id, nearToTransfer) {
   fs.writeFileSync(path.join(dir, `${id}.json`), JSON.stringify({ account_id: id, public_key: kp.getPublicKey().toString(), private_key: kp.toString() }), { mode: 0o600 });
   return true;
 }
+
+// ───────── Sputnik DAO helpers (used by seed + setup scripts) ─────────
+const b64 = (o) => Buffer.from(typeof o === "string" ? o : JSON.stringify(o)).toString("base64");
+
+/** Create a DAO with a single council account and the default policy (anyone may propose, council approves). */
+export async function createDao({ factory, name, creator, council, purpose, deposit }) {
+  const args = { config: { name, purpose, metadata: "" }, policy: [council] };
+  return account(creator).callFunctionRaw({
+    contractId: factory, methodName: "create", gas: TGAS(300), deposit: deposit ?? NEAR(6.2),
+    args: { name, args: b64(args) },
+  });
+}
+
+/** Proposer asks the DAO to call `method` on `receiver`; returns the proposal id. */
+export async function daoPropose({ dao, proposer, receiver, method, args, deposit = "0", description, gasTgas = 60 }) {
+  await account(proposer).callFunction({
+    contractId: dao, methodName: "add_proposal", gas: TGAS(30), deposit: NEAR(1),
+    args: { proposal: { description, kind: { FunctionCall: { receiver_id: receiver, actions: [{ method_name: method, args: b64(args), deposit, gas: String(TGAS(gasTgas)) }] } } } },
+  });
+  return Number(await view(dao, "get_last_proposal_id")) - 1;
+}
+
+/** A council member approves; if the vote passes, the DAO executes the call in the same transaction tree. */
+export async function daoApprove({ dao, council, id }) {
+  return account(council).callFunctionRaw({ contractId: dao, methodName: "act_proposal", gas: TGAS(250), args: { id, action: "VoteApprove" } });
+}

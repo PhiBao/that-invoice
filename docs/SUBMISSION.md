@@ -19,7 +19,7 @@ That Invoice turns an invoice into a NEAR account. Today a business billing cryp
 >
 > Built at NEAR HACKATHON @NEARProtocol #NEARHackathon
 >
-> Demo: https://that-invoice.fly.dev
+> Demo: https://thatinvoice.uconfidant.tech
 > Repo: https://github.com/PhiBao/that-invoice
 > What would stop you selling an invoice this way?
 

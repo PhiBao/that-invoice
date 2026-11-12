@@ -23,6 +23,9 @@
 //! `Listed` and `Claiming` lock the token: it cannot be transferred, re-listed or claimed
 //! a second time while a sale or a payout is in flight.
 
+mod svg;
+use svg::brand_icon;
+
 use near_sdk::json_types::{Base58CryptoHash, U128, U64};
 use near_sdk::store::{IterableMap, LookupMap};
 use near_sdk::{
@@ -71,6 +74,8 @@ pub enum Kind {
     Paid,
     ClaimFailed,
     Claimed,
+    /// Money arrived at an invoice account after it had already been collected.
+    ToppedUp,
 }
 
 /// One line on the back of the invoice.
@@ -127,11 +132,23 @@ pub struct Config {
     pub invoices: U64,
 }
 
-/// NEP-171 `Token`.
+/// NEP-177 token metadata. `media` is an SVG data URI generated on demand from the invoice's
+/// current state, so a wallet or explorer shows the stamp the invoice carries right now.
+#[near(serializers = [json])]
+pub struct TokenMetadata {
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub media: Option<String>,
+    pub issued_at: Option<String>,
+    pub extra: Option<String>,
+}
+
+/// NEP-171 `Token` with NEP-177 metadata.
 #[near(serializers = [json])]
 pub struct Token {
     pub token_id: String,
     pub owner_id: AccountId,
+    pub metadata: Option<TokenMetadata>,
 }
 
 #[near(serializers = [json])]
@@ -506,10 +523,11 @@ impl Registry {
         require!(
             matches!(
                 inv.status,
-                Status::Issued | Status::Confirmed | Status::Listed | Status::Paid
+                Status::Issued | Status::Confirmed | Status::Listed | Status::Paid | Status::Claimed
             ),
             "invoice cannot be synced in its current state"
         );
+        let started_ms = U64(now_ms());
         Promise::new(self.token.clone())
             .function_call(
                 "ft_balance_of".to_string(),
@@ -522,12 +540,12 @@ impl Registry {
             .then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(GAS_CALLBACK)
-                    .on_synced(id),
+                    .on_synced(id, started_ms),
             )
     }
 
     #[private]
-    pub fn on_synced(&mut self, id: AccountId) -> bool {
+    pub fn on_synced(&mut self, id: AccountId, started_ms: U64) -> bool {
         let Ok(bytes) = env::promise_result_checked(0, 256) else {
             return false;
         };
@@ -571,6 +589,23 @@ impl Registry {
             Status::Paid if balance.0 > inv.received.0 => {
                 inv.received = balance;
                 self.invoices.insert(id, inv);
+                true
+            }
+            // Money arriving after the invoice was collected (a late second payment, a mistaken
+            // transfer). Reopen it for the current owner, but only if the balance was read AFTER the
+            // claim completed: a read started earlier may still show the already-collected money.
+            Status::Claimed if balance.0 > 0 && started_ms.0 > self.claimed_at(&inv) => {
+                inv.status = Status::Paid;
+                inv.received = balance;
+                let owner = inv.owner.clone();
+                self.push_log(&mut inv, Kind::ToppedUp, id.clone(), None, Some(balance));
+                self.invoices.insert(id.clone(), inv);
+                emit(
+                    "thatinvoice",
+                    "1.0.0",
+                    "topped_up",
+                    near_sdk::serde_json::json!([{ "invoice": id, "owner": owner, "received": balance }]),
+                );
                 true
             }
             _ => false,
@@ -675,7 +710,7 @@ impl Registry {
         if inv.status == Status::Creating {
             return None;
         }
-        Some(Token { token_id, owner_id: inv.owner.clone() })
+        Some(Self::token_of(inv))
     }
 
     pub fn nft_total_supply(&self) -> U128 {
@@ -688,7 +723,7 @@ impl Registry {
             .filter(|i| i.status != Status::Creating)
             .skip(from_index.map(|f| f.0 as usize).unwrap_or(0))
             .take(limit.unwrap_or(50) as usize)
-            .map(|i| Token { token_id: i.id.to_string(), owner_id: i.owner.clone() })
+            .map(|i| Self::token_of(i))
             .collect()
     }
 
@@ -712,7 +747,7 @@ impl Registry {
             .filter(|i| i.owner == account_id && i.status != Status::Creating)
             .skip(from_index.map(|f| f.0 as usize).unwrap_or(0))
             .take(limit.unwrap_or(50) as usize)
-            .map(|i| Token { token_id: i.id.to_string(), owner_id: i.owner.clone() })
+            .map(|i| Self::token_of(i))
             .collect()
     }
 
@@ -721,7 +756,7 @@ impl Registry {
             spec: "nft-1.0.0".to_string(),
             name: "That Invoice".to_string(),
             symbol: "INV".to_string(),
-            icon: None,
+            icon: Some(brand_icon()),
             base_uri: None,
             reference: None,
             reference_hash: None,
@@ -761,6 +796,30 @@ impl Registry {
 }
 
 impl Registry {
+    /// When this invoice was last collected (ms), read from the endorsement log.
+    fn claimed_at(&self, inv: &Invoice) -> u64 {
+        inv.log.iter().rev().find(|e| e.kind == Kind::Claimed).map(|e| e.at_ms.0).unwrap_or(0)
+    }
+
+    fn token_of(inv: &Invoice) -> Token {
+        let now = now_ms();
+        let (stamp, _) = svg::stamp_for(inv, now);
+        Token {
+            token_id: inv.id.to_string(),
+            owner_id: inv.owner.clone(),
+            metadata: Some(TokenMetadata {
+                title: Some(format!("Invoice {} · ${} · {}", inv.number, svg::dollars(inv.amount.0), stamp)),
+                description: Some(format!(
+                    "Invoice {} from {} to {}. Whoever owns this token collects the payment sent to the NEAR account {}.",
+                    inv.number, inv.issuer, inv.debtor, inv.id
+                )),
+                media: Some(svg::data_uri(&svg::invoice_svg(inv, now))),
+                issued_at: Some(inv.issued_ms.0.to_string()),
+                extra: Some(format!("{{\"status\":\"{stamp}\",\"due\":\"{}\"}}", svg::ymd(inv.due_ms.0))),
+            }),
+        }
+    }
+
     fn must(&self, id: &AccountId) -> Invoice {
         self.invoices
             .get(id)
