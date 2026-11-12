@@ -45,6 +45,8 @@ pub struct Config {
     pub guest_funder: String,
     /// Guest accounts one address may create per hour (testing can raise it).
     pub guest_per_ip: usize,
+    /// Guided-demo runs allowed per hour (the public default is conservative; recording sessions raise it).
+    pub demo_per_hour: usize,
 }
 
 impl Config {
@@ -169,6 +171,7 @@ impl Config {
             dao,
             keeper,
             guest_funder,
+            demo_per_hour: env::var("DEMO_PER_HOUR").ok().and_then(|v| v.parse().ok()).unwrap_or(12),
             guest_per_ip: env::var("GUEST_PER_IP").ok().and_then(|v| v.parse().ok()).unwrap_or(3),
         })
     }

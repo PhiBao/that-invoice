@@ -655,9 +655,9 @@ async fn demo_run(State(st): State<Shared>) -> Result<Sse<impl Stream<Item = Res
             None => Err(ApiError(StatusCode::CONFLICT, "a demo run is already in progress".into())),
         };
     }
-    if !within(&st.demo_log, 12, Duration::from_secs(3600)).await {
+    if !within(&st.demo_log, st.cfg.demo_per_hour, Duration::from_secs(3600)).await {
         st.demo_running.store(false, Ordering::SeqCst);
-        return Err(ApiError(StatusCode::TOO_MANY_REQUESTS, "the live demo is limited to 12 runs an hour; try again later".into()));
+        return Err(ApiError(StatusCode::TOO_MANY_REQUESTS, format!("the live demo is limited to {} runs an hour; try again later", st.cfg.demo_per_hour)));
     }
     let run = Arc::new(DemoRun::new());
     *st.demo.lock().await = Some(run.clone());
