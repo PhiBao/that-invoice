@@ -1,5 +1,5 @@
 # That Invoice on Fly.io (API + web in one machine, scales to zero).
-#   fly secrets set NEAR_KEYS='{"endorse-studio.testnet":"ed25519:...", ...}'
+#   fly secrets set NEAR_KEYS='{"<account>.testnet":"ed25519:...", ...}'   (personas, DAO proposer + council, token account, seed issuers)
 #   fly deploy
 app = "that-invoice"
 primary_region = "iad"
@@ -14,6 +14,10 @@ primary_region = "iad"
   PERSONA_STUDIO = "endorse-studio.testnet"
   PERSONA_ACME = "endorse-acme.testnet"
   PERSONA_FUND = "endorse-fund.testnet"
+  ACME_DAO = "thatinvoice-acme.sputnikv2.testnet"
+  ACME_PROPOSER = "endorse-acme.testnet"
+  ACME_COUNCIL = "council.endorse-fund.testnet"
+  GUEST_FUNDER = "endorse-acme.testnet"
   DATA_DIR = "/data"
 
 [[vm]]

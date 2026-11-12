@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import { InvoiceDoc } from "@/components/InvoiceDoc";
 import { useLedger } from "@/lib/store";
+import { usd } from "@/lib/format";
 import type { Invoice } from "@/lib/types";
 
 interface StepState {
@@ -153,7 +154,7 @@ export default function DemoPage() {
               {running ? (<><span className="spin" /> Running…</>) : done || fatal ? "Run it again" : "Run the demo"}
             </button>
             <span className="mono muted" style={{ fontSize: 12.5 }}>
-              {reconnecting ? "reconnecting to the run…" : running ? `${completed}/10 steps` : elapsed !== null ? `${elapsed}s end to end` : "about 45 seconds"}
+              {reconnecting ? "reconnecting to the run…" : running ? `${completed}/10 steps` : elapsed !== null ? `${elapsed}s end to end` : "about a minute"}
             </span>
           </div>
           <ol className="timeline">
@@ -194,7 +195,7 @@ export default function DemoPage() {
           {fatal && !running && <div className="note" style={{ marginTop: 18 }}>The run stopped early: {fatal}</div>}
           {done && invoice && (
             <div className="note green" style={{ marginTop: 18 }}>
-              <b>Settled.</b> The fund collected {Number(BigInt(invoice.received) / 1000000n).toLocaleString()} USDC, bought for 1,176.
+              <b>Settled.</b> The fund collected {usd(invoice.log.findLast((l) => l.kind === "Claimed")?.amount ?? invoice.amount, { cents: false })}, bought for 1,176.
               Studio Nine got its cash on day one. <Link href={`/i/${invoice.id}`}>Open the invoice →</Link>
             </div>
           )}
