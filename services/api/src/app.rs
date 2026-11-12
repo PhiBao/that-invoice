@@ -508,6 +508,26 @@ async fn run_dao_action(st: &AppState, dao: &crate::config::DaoCfg, action: &str
         let id = p["id"].as_str().ok_or_else(|| anyhow!("id is required"))?;
         parse_invoice_id(st, id).map_err(|e| anyhow!(e.1))
     };
+    // "Make the client pay now" (a demo helper) skips the proposal round-trip: anyone can pay an invoice
+    // account, so the client's treasurer account pays directly. The guided demo shows the DAO flow.
+    if action == "pay" && p["direct"].as_bool().unwrap_or(false) {
+        let i = id(p)?;
+        let inv: Option<Value> = st.chain.registry_view("invoice", json!({ "id": i })).await?;
+        let amount: u128 = inv
+            .as_ref()
+            .and_then(|v| v["amount"].as_str())
+            .and_then(|a| a.parse().ok())
+            .ok_or_else(|| anyhow!("no such invoice"))?;
+        ensure_usdc(st, &proposer, amount).await?;
+        let out = st
+            .chain
+            .call(&proposer, &token, "ft_transfer", json!({ "receiver_id": i, "amount": micro(amount) }), NearToken::from_yoctonear(1), 30)
+            .await?;
+        if out.ok {
+            st.keeper_wake.notify_one();
+        }
+        return Ok(out);
+    }
     let (receiver, method, args, deposit, gas, description) = match action {
         "confirm" => {
             let i = id(p)?;

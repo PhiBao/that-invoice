@@ -165,7 +165,7 @@ export default function InvoicePage({ params }: { params: Promise<{ id: string }
                 <div className="note">
                   <b>Demo helper.</b> In real life {short(inv.debtor, 26)} pays on its own schedule. To finish the loop now, make the client pay this invoice, then collect it with your own account.
                   <div style={{ marginTop: 10 }}>
-                    <button className="btn small ghost" disabled={!!busy} onClick={() => actAs("acme", "pay", { id }, "Client pays (demo helper)")}>
+                    <button className="btn small ghost" disabled={!!busy} onClick={() => actAs("acme", "pay", { id, direct: true }, "Client pays (demo helper)")}>
                       {busy === "pay" ? <span className="spin" /> : "Make the client pay now"}
                     </button>
                   </div>
