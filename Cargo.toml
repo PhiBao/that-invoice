@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["contracts/registry", "contracts/invoice-account"]
+members = ["contracts/registry", "contracts/invoice-account", "services/api"]
 
 [workspace.dependencies]
 near-sdk = { version = "5.30", default-features = false, features = ["global-contracts"] }
