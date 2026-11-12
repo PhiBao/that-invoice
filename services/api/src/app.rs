@@ -526,6 +526,8 @@ async fn run_dao_action(st: &AppState, dao: &crate::config::DaoCfg, action: &str
             } else {
                 parse_usdc(&p["amount"])?
             };
+            // A treasury pays from what it holds. Make sure the demo DAO's treasury can cover this invoice.
+            ensure_usdc(st, &dao_id, amount).await?;
             (
                 token,
                 "ft_transfer",
@@ -570,6 +572,36 @@ async fn run_dao_action(st: &AppState, dao: &crate::config::DaoCfg, action: &str
         }
     }
     Ok(out)
+}
+
+/// Top up a demo account with test USDC from the token account so it can cover `need`.
+/// Used for the Acme DAO treasury: it must hold at least the invoice it is asked to pay.
+pub async fn ensure_usdc(st: &AppState, account: &AccountId, need: u128) -> Result<()> {
+    let have = st.chain.usdc_balance(account).await.unwrap_or(0);
+    if have >= need {
+        return Ok(());
+    }
+    let token = st.chain.token.clone();
+    let registered: Value = st.chain.view(&token, "storage_balance_of", json!({ "account_id": account })).await.unwrap_or(Value::Null);
+    if registered.is_null() {
+        let out = st
+            .chain
+            .call(&token, &token, "storage_deposit", json!({ "account_id": account, "registration_only": true }), NearToken::from_millinear(2), 30)
+            .await?;
+        if !out.ok {
+            bail!("could not register {account} on the token: {}", out.error.unwrap_or_default());
+        }
+    }
+    // Fund to need + a buffer, so the next invoice does not need another top-up.
+    let amount = need - have + 5_000_000_000;
+    let out = st
+        .chain
+        .call(&token, &token, "ft_transfer", json!({ "receiver_id": account, "amount": micro(amount) }), NearToken::from_yoctonear(1), 30)
+        .await?;
+    if !out.ok {
+        bail!("could not fund the treasury: {}", out.error.unwrap_or_default());
+    }
+    Ok(())
 }
 
 mod base64_engine {
