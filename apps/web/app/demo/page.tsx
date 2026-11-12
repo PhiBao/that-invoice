@@ -116,7 +116,7 @@ export default function DemoPage() {
         real transaction. The two red steps are attempts the contract refuses.
       </p>
 
-      <div className="cols" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,440px)" }}>
+      <div className="cols demo-cols">
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 6 }}>
             <button className="btn stamp" onClick={run} disabled={running || !state}>

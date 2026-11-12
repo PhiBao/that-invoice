@@ -225,3 +225,23 @@ label.field > span { display: block; margin-bottom: 6px; }
 .steps3 h3 { font-family: var(--font-display); font-weight: 500; font-size: 22px; margin: 8px 0 6px; letter-spacing: -0.01em; }
 .steps3 p { margin: 0; color: var(--ink-2); font-size: 14.5px; }
 @media (max-width: 860px) { .steps3 { grid-template-columns: 1fr; } .steps3 > div, .steps3 > div + div { padding: 18px 0; border-right: 0; border-bottom: 1px solid var(--rule); } }
+
+/* narrow screens */
+.cols > *, .hero > * { min-width: 0; }
+.kv { grid-template-columns: auto minmax(0, 1fr); }
+.kv dd { overflow-wrap: anywhere; min-width: 0; }
+.nav a { white-space: nowrap; }
+.doc-grid dd, .payto .addr, .endorse-list .who { overflow-wrap: anywhere; }
+@media (max-width: 560px) {
+  .face { padding: 20px 18px; }
+  .doc { min-height: 500px; }
+  .corner-stamp { top: 70px; right: 14px; }
+  .doc-grid { gap: 12px 14px; }
+  .payto .qr { width: 64px; height: 64px; }
+  .h1 { font-size: 40px; }
+  .top .right { margin-left: 0; width: 100%; justify-content: space-between; }
+  .persona-btn strong { font-size: 13px; }
+  .section-head { flex-wrap: wrap; }
+}
+.demo-cols { grid-template-columns: minmax(0, 1fr) minmax(0, 440px); }
+@media (max-width: 980px) { .demo-cols { grid-template-columns: 1fr; } .demo-cols > div:last-child { position: static !important; } }
