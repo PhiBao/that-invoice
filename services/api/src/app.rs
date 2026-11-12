@@ -147,6 +147,22 @@ async fn get_state(State(st): State<Shared>) -> Result<Json<Value>, ApiError> {
         None => true,
     };
     let reg_cfg: Value = st.chain.registry_view("config", json!({})).await.unwrap_or(Value::Null);
+    let invoices = st.invoices.read().await.clone();
+    let mut debtor_ids: Vec<String> = invoices.iter().filter_map(|i| i["debtor"].as_str().map(str::to_string)).collect();
+    debtor_ids.sort();
+    debtor_ids.dedup();
+    let lookups = debtor_ids.iter().map(|d| {
+        let st = st.clone();
+        let d = d.clone();
+        async move {
+            let rec: Value = match d.parse::<AccountId>() {
+                Ok(a) => st.chain.registry_view("debtor_record", json!({ "debtor": a })).await.unwrap_or(Value::Null),
+                Err(_) => Value::Null,
+            };
+            (d, rec)
+        }
+    });
+    let debtors: serde_json::Map<String, Value> = futures::future::join_all(lookups).await.into_iter().collect();
     Ok(Json(json!({
         "network": st.cfg.network,
         "registry": st.cfg.registry,
@@ -155,7 +171,8 @@ async fn get_state(State(st): State<Shared>) -> Result<Json<Value>, ApiError> {
         "registry_config": reg_cfg,
         "stale": stale,
         "personas": personas,
-        "invoices": *st.invoices.read().await,
+        "invoices": invoices,
+        "debtors": debtors,
     })))
 }
 
