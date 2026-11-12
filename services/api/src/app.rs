@@ -40,7 +40,11 @@ pub struct AppState {
     pub updates: broadcast::Sender<String>,
     pub demo_running: AtomicBool,
     pub act_log: Mutex<VecDeque<Instant>>,
+    /// Hourly caps on the two operations that spend the demo accounts' NEAR.
+    pub issue_log: Mutex<VecDeque<Instant>>,
+    pub demo_log: Mutex<VecDeque<Instant>>,
     pub quote_cache: Mutex<std::collections::HashMap<String, (Instant, Value)>>,
+    pub state_cache: Mutex<Option<(Instant, Value)>>,
     pub http: reqwest::Client,
 }
 
@@ -100,6 +104,7 @@ pub async fn poll_loop(st: Shared) {
                 *st.last_ok.write().await = Some(Instant::now());
                 if fp != last {
                     last = fp;
+                    *st.state_cache.lock().await = None;
                     let _ = st.updates.send("update".into());
                 }
             }
@@ -133,25 +138,37 @@ fn micro(v: u128) -> String {
 }
 
 async fn get_state(State(st): State<Shared>) -> Result<Json<Value>, ApiError> {
-    let mut personas = Vec::new();
-    for p in &st.cfg.personas {
-        let acct: AccountId = p.account.parse().map_err(|e| anyhow!("{e}"))?;
-        let bal = st.chain.usdc_balance(&acct).await.unwrap_or(0);
-        personas.push(json!({
-            "key": p.key, "account": p.account, "name": p.name, "role": p.role,
-            "blurb": p.blurb, "usdc": micro(bal), "can_sign": st.chain.can_sign(&acct),
-        }));
+    // A burst of browser refreshes (one per SSE tick) should cost one set of RPC reads.
+    {
+        let c = st.state_cache.lock().await;
+        if let Some((t, v)) = c.as_ref() {
+            if t.elapsed() < Duration::from_millis(1200) {
+                return Ok(Json(v.clone()));
+            }
+        }
     }
-    let stale = match *st.last_ok.read().await {
-        Some(t) => t.elapsed() > Duration::from_secs(20),
-        None => true,
-    };
-    let reg_cfg: Value = st.chain.registry_view("config", json!({})).await.unwrap_or(Value::Null);
     let invoices = st.invoices.read().await.clone();
     let mut debtor_ids: Vec<String> = invoices.iter().filter_map(|i| i["debtor"].as_str().map(str::to_string)).collect();
     debtor_ids.sort();
     debtor_ids.dedup();
-    let lookups = debtor_ids.iter().map(|d| {
+
+    let persona_futs = st.cfg.personas.iter().map(|p| {
+        let st = st.clone();
+        let p = p.clone();
+        async move {
+            let acct: Option<AccountId> = p.account.parse().ok();
+            let bal = match &acct {
+                Some(a) => st.chain.usdc_balance(a).await.unwrap_or(0),
+                None => 0,
+            };
+            json!({
+                "key": p.key, "account": p.account, "name": p.name, "role": p.role,
+                "blurb": p.blurb, "usdc": micro(bal),
+                "can_sign": acct.map(|a| st.chain.can_sign(&a)).unwrap_or(false),
+            })
+        }
+    });
+    let debtor_futs = debtor_ids.iter().map(|d| {
         let st = st.clone();
         let d = d.clone();
         async move {
@@ -162,8 +179,17 @@ async fn get_state(State(st): State<Shared>) -> Result<Json<Value>, ApiError> {
             (d, rec)
         }
     });
-    let debtors: serde_json::Map<String, Value> = futures::future::join_all(lookups).await.into_iter().collect();
-    Ok(Json(json!({
+    let (personas, debtors, reg_cfg) = tokio::join!(
+        futures::future::join_all(persona_futs),
+        futures::future::join_all(debtor_futs),
+        async { st.chain.registry_view::<Value>("config", json!({})).await.unwrap_or(Value::Null) },
+    );
+    let debtors: serde_json::Map<String, Value> = debtors.into_iter().collect();
+    let stale = match *st.last_ok.read().await {
+        Some(t) => t.elapsed() > Duration::from_secs(20),
+        None => true,
+    };
+    let v = json!({
         "network": st.cfg.network,
         "registry": st.cfg.registry,
         "token": st.cfg.token,
@@ -173,7 +199,9 @@ async fn get_state(State(st): State<Shared>) -> Result<Json<Value>, ApiError> {
         "personas": personas,
         "invoices": invoices,
         "debtors": debtors,
-    })))
+    });
+    *st.state_cache.lock().await = Some((Instant::now(), v.clone()));
+    Ok(Json(v))
 }
 
 fn parse_invoice_id(st: &AppState, id: &str) -> Result<AccountId, ApiError> {
@@ -259,6 +287,20 @@ pub fn parse_usdc(v: &Value) -> Result<u128> {
         bail!("amount must be between 0.000001 and 1,000,000");
     }
     Ok(total)
+}
+
+/// Sliding-window limiter: at most `max` events per `window`.
+pub async fn within(log: &Mutex<VecDeque<Instant>>, max: usize, window: Duration) -> bool {
+    let mut log = log.lock().await;
+    let now = Instant::now();
+    while log.front().is_some_and(|t| now.duration_since(*t) > window) {
+        log.pop_front();
+    }
+    if log.len() >= max {
+        return false;
+    }
+    log.push_back(now);
+    true
 }
 
 async fn rate_ok(st: &AppState) -> bool {
@@ -373,6 +415,9 @@ async fn act(State(st): State<Shared>, Json(req): Json<ActReq>) -> Result<Json<V
     if st.demo_running.load(Ordering::SeqCst) {
         return Err(ApiError(StatusCode::CONFLICT, "the guided demo is running; try again in a minute".into()));
     }
+    if req.action == "issue" && !within(&st.issue_log, 20, Duration::from_secs(3600)).await {
+        return Err(ApiError(StatusCode::TOO_MANY_REQUESTS, "the demo allows 20 new invoices an hour; try again later".into()));
+    }
     let out = run_action(&st, &req.persona, &req.action, &req.params)
         .await
         .map_err(|e| bad(format!("{e:#}")))?;
@@ -380,6 +425,7 @@ async fn act(State(st): State<Shared>, Json(req): Json<ActReq>) -> Result<Json<V
     if out.ok {
         if let Ok(list) = fetch_all_invoices(&st).await {
             *st.invoices.write().await = list;
+            *st.state_cache.lock().await = None;
             let _ = st.updates.send("update".into());
         }
     }
@@ -391,6 +437,10 @@ async fn act(State(st): State<Shared>, Json(req): Json<ActReq>) -> Result<Json<V
 async fn demo_run(State(st): State<Shared>) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, ApiError> {
     if st.demo_running.swap(true, Ordering::SeqCst) {
         return Err(ApiError(StatusCode::CONFLICT, "a demo run is already in progress".into()));
+    }
+    if !within(&st.demo_log, 12, Duration::from_secs(3600)).await {
+        st.demo_running.store(false, Ordering::SeqCst);
+        return Err(ApiError(StatusCode::TOO_MANY_REQUESTS, "the live demo is limited to 12 runs an hour; try again later".into()));
     }
     let s = demo::stream(st.clone());
     Ok(Sse::new(s).keep_alive(KeepAlive::new().interval(Duration::from_secs(10))))

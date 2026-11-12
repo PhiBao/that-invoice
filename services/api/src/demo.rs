@@ -125,6 +125,7 @@ pub fn stream(st: Shared) -> impl Stream<Item = Result<Event, Infallible>> {
                 "events": outcome.events, "gas_tgas": outcome.gas_tgas, "invoice_id": invoice_id }));
         }
 
+        *st.state_cache.lock().await = None;
         let _ = st.updates.send("update".into());
         let final_inv: Value = match persona_account(&st, "studio") {
             Ok(_) => st.chain.registry_view("invoice", json!({ "id": invoice_id })).await.unwrap_or(Value::Null),

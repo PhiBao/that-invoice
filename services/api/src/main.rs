@@ -35,7 +35,10 @@ async fn main() -> anyhow::Result<()> {
         updates: tx,
         demo_running: AtomicBool::new(false),
         act_log: Mutex::new(VecDeque::new()),
+        issue_log: Mutex::new(VecDeque::new()),
+        demo_log: Mutex::new(VecDeque::new()),
         quote_cache: Mutex::new(HashMap::new()),
+        state_cache: Mutex::new(None),
         http: reqwest::Client::builder().user_agent("endorse-api/0.1").build()?,
     });
 
