@@ -15,7 +15,7 @@ const TARGET_FOR_SALE: usize = 4;
 const MIN_FOR_SALE: usize = 3;
 const CHECK_EVERY: Duration = Duration::from_secs(30);
 /// Each new invoice costs the issuer about 0.11 NEAR, so cap the pace and stop before an issuer runs dry.
-const MAX_PER_HOUR: usize = 24;
+const MAX_PER_HOUR: usize = 12;
 const MIN_ISSUER_NEAR: u128 = 300_000_000_000_000_000_000_000; // 0.3 NEAR
 
 /// (issuer account, issuer label, debtor persona-or-account, face USD, ask USD, days to due, number prefix)

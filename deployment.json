@@ -20,5 +20,5 @@
     "loomlabs.endorse-studio.testnet"
   ],
   "seedClient": "northwind.endorse-studio.testnet",
-  "registryLocked": false
+  "registryLocked": true
 }
