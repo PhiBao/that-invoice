@@ -66,9 +66,15 @@ export async function fundGuest(g: GuestIdentity): Promise<{ usdc: string; funde
   throw lastError instanceof Error ? lastError : new Error("could not reach the server");
 }
 
+/**
+ * The browser talks to one same-origin endpoint (/api/rpc); the server relays to whichever public node works.
+ * Public nodes disagree about CORS, rate-limit by client address and time out on slow requests, so asking each
+ * visitor's browser to juggle them is fragile. If the proxy itself is unreachable, fall back to the public list.
+ */
 function providerFor(rpc: string[]) {
-  const providers = rpc.map((url) => new JsonRpcProvider({ url }));
-  return providers.length > 1 ? new FailoverRpcProvider(providers) : providers[0];
+  const proxy = new JsonRpcProvider({ url: `${window.location.origin}/api/rpc` });
+  const direct = rpc.map((url) => new JsonRpcProvider({ url }));
+  return new FailoverRpcProvider([proxy, ...direct]);
 }
 
 export interface GuestCall {

@@ -51,6 +51,8 @@ pub struct AppState {
     /// Guest-account funding: per-IP and global sliding windows.
     pub guest_ips: Mutex<std::collections::HashMap<String, VecDeque<Instant>>>,
     pub guest_log: Mutex<VecDeque<Instant>>,
+    pub rpc_ips: Mutex<std::collections::HashMap<String, VecDeque<Instant>>>,
+    pub rpc_cursor: std::sync::atomic::AtomicUsize,
     pub keeper_txs: Mutex<std::collections::HashMap<String, (String, String)>>,
     pub http: reqwest::Client,
 }
@@ -137,6 +139,7 @@ pub fn router(state: Shared) -> Router {
         .route("/api/events", get(events))
         .route("/api/quote", get(get_quote))
         .route("/api/guest", post(post_guest))
+        .route("/api/rpc", post(post_rpc).layer(axum::extract::DefaultBodyLimit::max(64 * 1024)))
         .route("/api/balance/{account}", get(get_balance))
         .route("/api/docs", post(post_doc))
         .route("/api/docs/{hash}", get(get_doc))
@@ -904,4 +907,63 @@ mod guest_tests {
         assert!(implicit_account("ed25519:0OIl").is_none()); // characters outside base58
         assert!(implicit_account("ed25519:3yZe7d").is_none()); // wrong length
     }
+}
+
+// ───────────────────────────── RPC proxy ─────────────────────────────
+//
+// Guest accounts sign in the browser, and the browser then needs a NEAR RPC. Public RPC nodes disagree about
+// CORS, rate-limit by client address, and answer 408 on slow requests. So the browser talks to one same-origin
+// endpoint and the server relays to whichever public node works. Only read and transaction-submission methods
+// are relayed.
+
+const RPC_ALLOWED: &[&str] = &[
+    "query", "block", "chunk", "status", "gas_price", "send_tx", "broadcast_tx_async", "broadcast_tx_commit",
+    "tx", "EXPERIMENTAL_tx_status",
+];
+
+async fn post_rpc(State(st): State<Shared>, headers: axum::http::HeaderMap, body: axum::body::Bytes) -> Response {
+    let reject = |code: StatusCode, msg: &str| (code, Json(json!({ "error": msg }))).into_response();
+    let ip = client_ip(&headers);
+    {
+        let mut m = st.rpc_ips.lock().await;
+        let log = m.entry(ip).or_default();
+        let now = Instant::now();
+        while log.front().is_some_and(|t| now.duration_since(*t) > Duration::from_secs(60)) {
+            log.pop_front();
+        }
+        if log.len() >= 600 {
+            return reject(StatusCode::TOO_MANY_REQUESTS, "too many RPC requests; slow down");
+        }
+        log.push_back(now);
+    }
+    let Ok(req) = serde_json::from_slice::<Value>(&body) else {
+        return reject(StatusCode::BAD_REQUEST, "body must be a JSON-RPC request");
+    };
+    let method = req["method"].as_str().unwrap_or("");
+    if !RPC_ALLOWED.contains(&method) {
+        return reject(StatusCode::FORBIDDEN, "that RPC method is not available through this proxy");
+    }
+    let urls: Vec<&String> = std::iter::once(&st.cfg.rpc_url).chain(st.cfg.rpc_fallbacks.iter()).collect();
+    // Rotate the starting point so one node is not hammered while others sit idle.
+    let start = st.rpc_cursor.fetch_add(1, Ordering::Relaxed) % urls.len();
+    let mut last = String::from("no RPC endpoint answered");
+    for k in 0..urls.len() {
+        let url = urls[(start + k) % urls.len()];
+        let sent = st.http.post(url.as_str()).header("content-type", "application/json").body(body.clone())
+            .timeout(Duration::from_secs(25)).send().await;
+        match sent {
+            Ok(r) if r.status().is_success() => {
+                let bytes = r.bytes().await.unwrap_or_default();
+                return (StatusCode::OK, [(axum::http::header::CONTENT_TYPE, "application/json")], bytes).into_response();
+            }
+            // A 408 on send_tx means the node stopped waiting, not that the transaction failed: pass it on.
+            Ok(r) if r.status() == StatusCode::REQUEST_TIMEOUT => {
+                let bytes = r.bytes().await.unwrap_or_default();
+                return (StatusCode::REQUEST_TIMEOUT, [(axum::http::header::CONTENT_TYPE, "application/json")], bytes).into_response();
+            }
+            Ok(r) => last = format!("{url}: HTTP {}", r.status()),
+            Err(e) => last = format!("{url}: {e}"),
+        }
+    }
+    reject(StatusCode::BAD_GATEWAY, &last)
 }

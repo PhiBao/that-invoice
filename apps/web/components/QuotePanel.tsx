@@ -11,13 +11,23 @@ export function QuotePanel({ amountMicro }: { amountMicro: string }) {
     const whole = (Number(BigInt(amountMicro)) / 1e6).toString();
     setData(null);
     setErr(null);
-    fetch(`/api/quote?amount=${whole}`)
-      .then(async (r) => {
-        const b = await r.json();
-        if (!r.ok) throw new Error(b.error ?? `HTTP ${r.status}`);
-        if (live) setData(b);
-      })
-      .catch((e) => live && setErr(e.message));
+    // Quotes come from a third party and can fail for a moment; try a few times before saying so.
+    (async () => {
+      let last = "";
+      for (let attempt = 0; attempt < 4 && live; attempt++) {
+        try {
+          const r = await fetch(`/api/quote?amount=${whole}`);
+          const b = await r.json();
+          if (!r.ok) throw new Error(b.error ?? `HTTP ${r.status}`);
+          if (live) setData(b);
+          return;
+        } catch (e) {
+          last = e instanceof Error ? e.message : "request failed";
+          await new Promise((res) => setTimeout(res, 1500 * (attempt + 1)));
+        }
+      }
+      if (live) setErr(last);
+    })();
     return () => { live = false; };
   }, [amountMicro]);
 
@@ -29,7 +39,7 @@ export function QuotePanel({ amountMicro }: { amountMicro: string }) {
       </header>
       <div className="body">
         {!data && !err && <p className="muted" style={{ margin: 0 }}>Asking NEAR Intents for quotes…</p>}
-        {err && <p className="muted" style={{ margin: 0 }}>Quotes are unavailable right now ({err}).</p>}
+        {err && <p className="muted" style={{ margin: 0 }}>NEAR Intents did not answer just now. This panel only shows a price; the invoice itself is unaffected. Reload to try again.</p>}
         {data && (
           <>
             <p style={{ margin: "0 0 8px", fontSize: 13.5, color: "var(--ink-2)" }}>
