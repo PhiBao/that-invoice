@@ -34,6 +34,7 @@ async fn main() -> anyhow::Result<()> {
         last_ok: RwLock::new(None),
         updates: tx,
         demo_running: AtomicBool::new(false),
+        demo: Mutex::new(None),
         act_log: Mutex::new(VecDeque::new()),
         issue_log: Mutex::new(VecDeque::new()),
         demo_log: Mutex::new(VecDeque::new()),

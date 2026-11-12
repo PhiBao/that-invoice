@@ -36,6 +36,7 @@ export default function DemoPage() {
   const [invoiceId, setInvoiceId] = useState<string | null>(null);
   const [fatal, setFatal] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
   const [flipped, setFlipped] = useState(false);
   const t0 = useRef(0);
   const [elapsed, setElapsed] = useState<number | null>(null);
@@ -54,35 +55,63 @@ export default function DemoPage() {
     setElapsed(null);
     setRunning(true);
     t0.current = Date.now();
+    // The run lives on the server, so a dropped connection (Wi-Fi blip, mobile network change) must not
+    // end it: re-attach with GET and the server replays every step so far, then follows live.
+    let method: "POST" | "GET" = "POST";
+    let terminal = false;
+    let attempts = 0;
     try {
-      const res = await fetch("/api/demo/run", { method: "POST" });
-      if (!res.ok || !res.body) {
-        const b = await res.json().catch(() => ({}));
-        throw new Error(b.error ?? `HTTP ${res.status}`);
-      }
-      const reader = res.body.getReader();
-      const dec = new TextDecoder();
-      let buf = "";
-      for (;;) {
-        const { value, done: end } = await reader.read();
-        if (end) break;
-        buf += dec.decode(value, { stream: true });
-        let cut: number;
-        while ((cut = buf.indexOf("\n\n")) >= 0) {
-          const block = buf.slice(0, cut);
-          buf = buf.slice(cut + 2);
-          const line = block.split("\n").find((l) => l.startsWith("data:"));
-          if (!line) continue;
-          handle(JSON.parse(line.slice(5)));
+      while (!terminal && attempts < 8) {
+        try {
+          const res = await fetch("/api/demo/run", { method });
+          if (!res.ok || !res.body) {
+            const b = await res.json().catch(() => ({}));
+            throw Object.assign(new Error(b.error ?? `HTTP ${res.status}`), { fatal: true });
+          }
+          terminal = await readStream(res.body);
+        } catch (e) {
+          if ((e as { fatal?: boolean }).fatal) throw e;
+        }
+        if (!terminal) {
+          method = "GET";
+          attempts += 1;
+          setReconnecting(true);
+          await new Promise((r) => setTimeout(r, Math.min(1000 * attempts, 4000)));
         }
       }
+      if (!terminal) throw new Error("lost the connection to the server");
     } catch (e) {
       setFatal(e instanceof Error ? e.message : "demo failed");
     } finally {
+      setReconnecting(false);
       setRunning(false);
       setElapsed(Math.round((Date.now() - t0.current) / 1000));
       refresh();
     }
+  }
+
+  async function readStream(body: ReadableStream<Uint8Array>): Promise<boolean> {
+    const reader = body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    let sawTerminal = false;
+    for (;;) {
+      const { value, done: end } = await reader.read();
+      if (end) break;
+      buf += dec.decode(value, { stream: true });
+      let cut: number;
+      while ((cut = buf.indexOf("\n\n")) >= 0) {
+        const block = buf.slice(0, cut);
+        buf = buf.slice(cut + 2);
+        const line = block.split("\n").find((l) => l.startsWith("data:"));
+        if (!line) continue;
+        const m = JSON.parse(line.slice(5));
+        setReconnecting(false);
+        handle(m);
+        if (m.kind === "done" || m.kind === "error") sawTerminal = true;
+      }
+    }
+    return sawTerminal;
   }
 
   function handle(m: any) {
@@ -123,7 +152,7 @@ export default function DemoPage() {
               {running ? (<><span className="spin" /> Running…</>) : done || fatal ? "Run it again" : "Run the demo"}
             </button>
             <span className="mono muted" style={{ fontSize: 12.5 }}>
-              {running ? `${completed}/10 steps` : elapsed !== null ? `${elapsed}s end to end` : "about 45 seconds"}
+              {reconnecting ? "reconnecting to the run…" : running ? `${completed}/10 steps` : elapsed !== null ? `${elapsed}s end to end` : "about 45 seconds"}
             </span>
           </div>
           <ol className="timeline">

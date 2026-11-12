@@ -39,6 +39,8 @@ pub struct AppState {
     pub last_ok: RwLock<Option<Instant>>,
     pub updates: broadcast::Sender<String>,
     pub demo_running: AtomicBool,
+    /// The current (or most recent) guided demo run, so clients can reconnect and replay it.
+    pub demo: Mutex<Option<Arc<DemoRun>>>,
     pub act_log: Mutex<VecDeque<Instant>>,
     /// Hourly caps on the two operations that spend the demo accounts' NEAR.
     pub issue_log: Mutex<VecDeque<Instant>>,
@@ -49,6 +51,51 @@ pub struct AppState {
 }
 
 pub type Shared = Arc<AppState>;
+
+/// A guided-demo run that executes on the server regardless of whether a browser stays connected.
+pub struct DemoRun {
+    events: Mutex<Vec<Value>>,
+    tx: broadcast::Sender<Value>,
+}
+
+impl DemoRun {
+    fn new() -> Self {
+        Self { events: Mutex::new(Vec::new()), tx: broadcast::channel(64).0 }
+    }
+    async fn push(&self, v: Value) {
+        self.events.lock().await.push(v.clone());
+        let _ = self.tx.send(v);
+    }
+}
+
+fn is_terminal(v: &Value) -> bool {
+    matches!(v["kind"].as_str(), Some("done") | Some("error"))
+}
+
+/// Replay everything so far, then follow live until the run ends. Safe to call again after a dropped connection.
+fn attach(run: Arc<DemoRun>) -> Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>> {
+    let s = async_stream::stream! {
+        let mut rx = run.tx.subscribe();
+        let snapshot = run.events.lock().await.clone();
+        for v in snapshot {
+            let t = is_terminal(&v);
+            yield Ok(Event::default().json_data(&v).unwrap());
+            if t { return; }
+        }
+        loop {
+            match rx.recv().await {
+                Ok(v) => {
+                    let t = is_terminal(&v);
+                    yield Ok(Event::default().json_data(&v).unwrap());
+                    if t { break; }
+                }
+                Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(_) => break,
+            }
+        }
+    };
+    Sse::new(s).keep_alive(KeepAlive::new().interval(Duration::from_secs(10)))
+}
 
 pub struct ApiError(pub StatusCode, pub String);
 impl IntoResponse for ApiError {
@@ -81,7 +128,7 @@ pub fn router(state: Shared) -> Router {
         .route("/api/invoices/{id}", get(get_invoice))
         .route("/api/debtors/{account}", get(get_debtor))
         .route("/api/act", post(act))
-        .route("/api/demo/run", post(demo_run))
+        .route("/api/demo/run", post(demo_run).get(demo_attach))
         .route("/api/events", get(events))
         .route("/api/quote", get(get_quote))
         .route("/api/docs", post(post_doc))
@@ -445,15 +492,40 @@ async fn act(State(st): State<Shared>, Json(req): Json<ActReq>) -> Result<Json<V
 // ───────────────────────────── demo, quote, docs ─────────────────────────────
 
 async fn demo_run(State(st): State<Shared>) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, ApiError> {
+    // A run already in progress is shared: a second visitor watches the same one.
     if st.demo_running.swap(true, Ordering::SeqCst) {
-        return Err(ApiError(StatusCode::CONFLICT, "a demo run is already in progress".into()));
+        let run = st.demo.lock().await.clone();
+        return match run {
+            Some(r) => Ok(attach(r)),
+            None => Err(ApiError(StatusCode::CONFLICT, "a demo run is already in progress".into())),
+        };
     }
     if !within(&st.demo_log, 12, Duration::from_secs(3600)).await {
         st.demo_running.store(false, Ordering::SeqCst);
         return Err(ApiError(StatusCode::TOO_MANY_REQUESTS, "the live demo is limited to 12 runs an hour; try again later".into()));
     }
-    let s = demo::stream(st.clone());
-    Ok(Sse::new(s).keep_alive(KeepAlive::new().interval(Duration::from_secs(10))))
+    let run = Arc::new(DemoRun::new());
+    *st.demo.lock().await = Some(run.clone());
+    let worker = run.clone();
+    let st2 = st.clone();
+    // The run belongs to the server, not to the HTTP connection: a dropped browser does not stop it.
+    tokio::spawn(async move {
+        use futures::StreamExt;
+        let s = demo::stream(st2);
+        futures::pin_mut!(s);
+        while let Some(v) = s.next().await {
+            worker.push(v).await;
+        }
+    });
+    Ok(attach(run))
+}
+
+/// Re-attach to the current or latest run (used after a dropped connection).
+async fn demo_attach(State(st): State<Shared>) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, ApiError> {
+    match st.demo.lock().await.clone() {
+        Some(r) => Ok(attach(r)),
+        None => Err(ApiError(StatusCode::NOT_FOUND, "no demo run to attach to".into())),
+    }
 }
 
 #[derive(Deserialize)]

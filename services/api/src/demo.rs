@@ -2,9 +2,8 @@
 //! streams each step to the browser as it lands. Nothing is simulated. Each step carries the
 //! explorer link of the transaction that did it.
 
-use std::{convert::Infallible, sync::atomic::Ordering};
+use std::sync::atomic::Ordering;
 
-use axum::response::sse::Event;
 use futures::Stream;
 use serde_json::{json, Value};
 
@@ -20,12 +19,13 @@ impl Drop for RunGuard {
 const FACE: &str = "1200";
 const PRICE: &str = "1176";
 
-pub fn stream(st: Shared) -> impl Stream<Item = Result<Event, Infallible>> {
+/// Yields one JSON event per step. Transport (SSE, replay, reconnect) lives in `app.rs`.
+pub fn stream(st: Shared) -> impl Stream<Item = Value> {
     async_stream::stream! {
         let _guard = RunGuard(st.clone());
         let total = 10;
         macro_rules! send {
-            ($v:expr) => { Ok::<Event, Infallible>(Event::default().json_data($v).unwrap()) };
+            ($v:expr) => { $v };
         }
 
         let number = format!("DEMO-{}", to_base36(chrono::Utc::now().timestamp_millis() as u64));
