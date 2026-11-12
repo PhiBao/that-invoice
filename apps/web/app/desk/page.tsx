@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useLedger } from "@/lib/store";
-import { apr, date, daysTo, discountPct, short, usd } from "@/lib/format";
+import { apr, date, daysLate, daysTo, discountPct, isOverdue, short, usd } from "@/lib/format";
 
 export default function DeskPage() {
   const { state, persona, act, busy } = useLedger();
@@ -46,12 +46,19 @@ export default function DeskPage() {
                     <td className="num">{usd(i.amount)}</td>
                     <td className="num"><b>{usd(i.price)}</b></td>
                     <td className="num">{discountPct(i.amount, i.price!).toFixed(2)}%</td>
-                    <td className="num">{days > 0 ? `${days}d` : "due"}<div className="sub">{date(i.due_ms)}</div></td>
-                    <td className="num">{y === null ? "–" : `${y.toFixed(1)}%`}</td>
+                    <td className="num">{isOverdue(i) ? <span style={{ color: "var(--stamp-ink)" }}>{daysLate(i.due_ms)}d late</span> : days > 0 ? `${days}d` : "due"}<div className="sub">{date(i.due_ms)}</div></td>
+                    <td className="num">{isOverdue(i) ? <span title="Past due: priced for the risk the client does not pay on time" style={{ color: "var(--stamp-ink)" }}>distressed</span> : y === null ? "–" : `${y.toFixed(1)}%`}</td>
                     <td style={{ textAlign: "right" }}>
-                      <button className="btn small stamp" disabled={!!busy || own || !persona} title={own ? "You cannot buy your own invoice" : undefined} onClick={() => act("buy", { id: i.id }, "Buy invoice")}>
-                        {busy === "buy" ? <span className="spin" /> : own ? "Yours" : "Buy"}
-                      </button>
+                      {(() => {
+                        const short = !!persona && BigInt(persona.usdc || "0") < BigInt(i.price!);
+                        return (
+                          <button className="btn small stamp" disabled={!!busy || own || !persona || short}
+                            title={own ? "You cannot buy your own invoice" : short ? "Not enough USDC in this account" : undefined}
+                            onClick={() => act("buy", { id: i.id }, "Buy invoice")}>
+                            {busy === "buy" ? <span className="spin" /> : own ? "Yours" : short ? "Needs USDC" : "Buy"}
+                          </button>
+                        );
+                      })()}
                     </td>
                   </tr>
                 );

@@ -5,7 +5,7 @@ import { use, useEffect, useMemo, useState } from "react";
 import { InvoiceDoc } from "@/components/InvoiceDoc";
 import { QuotePanel } from "@/components/QuotePanel";
 import { useLedger } from "@/lib/store";
-import { accountUrl, apr, date, daysTo, discountPct, short, toMicro, usd } from "@/lib/format";
+import { accountUrl, apr, date, daysLate, daysTo, discountPct, isOverdue, short, toMicro, usd } from "@/lib/format";
 import type { DebtorRecord, Invoice } from "@/lib/types";
 
 interface Detail { invoice: Invoice; held: string; debtor_record: DebtorRecord | null }
@@ -13,7 +13,7 @@ interface Detail { invoice: Invoice; held: string; debtor_record: DebtorRecord |
 export default function InvoicePage({ params }: { params: Promise<{ id: string }> }) {
   const { id: rawId } = use(params);
   const id = decodeURIComponent(rawId);
-  const { state, persona, act, busy } = useLedger();
+  const { state, persona, act, actAs, busy } = useLedger();
   const [detail, setDetail] = useState<Detail | null>(null);
   const [missing, setMissing] = useState(false);
   const [flipped, setFlipped] = useState(false);
@@ -28,6 +28,16 @@ export default function InvoicePage({ params }: { params: Promise<{ id: string }
       })
       .catch(() => {});
   }, [id, fingerprint]);
+
+  // While an invoice is unpaid, keep watching its account so a payment shows up without a reload.
+  const unpaid = detail ? ["Issued", "Confirmed", "Listed", "Paid", "Claiming"].includes(detail.invoice.status) : false;
+  useEffect(() => {
+    if (!unpaid) return;
+    const t = setInterval(() => {
+      fetch(`/api/invoices/${encodeURIComponent(id)}`).then(async (r) => r.ok && setDetail(await r.json())).catch(() => {});
+    }, 4000);
+    return () => clearInterval(t);
+  }, [id, unpaid]);
 
   const inv = detail?.invoice;
   useEffect(() => {
@@ -72,6 +82,11 @@ export default function InvoicePage({ params }: { params: Promise<{ id: string }
               <span className="eyebrow">{persona?.role}</span>
             </header>
             <div className="body actions">
+              {isOverdue(inv) && (
+                <div className="note">
+                  <b>{daysLate(inv.due_ms)} days past due.</b> {inv.debtor} has not paid. Buyers price this as a distressed receivable. It can still be paid at any time, and the owner collects whenever it is.
+                </div>
+              )}
               {inv.status === "Issued" && isDebtor && (
                 <>
                   <p style={{ margin: 0 }}>{inv.issuer} says you owe <b>{usd(inv.amount)}</b>. Confirming records that on-chain and lets the issuer sell the invoice.</p>
@@ -124,10 +139,13 @@ export default function InvoicePage({ params }: { params: Promise<{ id: string }
               )}
 
               {open && covered && (
-                <>
-                  <p style={{ margin: 0 }}>The invoice account holds {usd(detail.held)}. Ask the registry to record the payment.</p>
-                  <button className="btn stamp" disabled={!!busy} onClick={() => act("sync", { id }, "Record payment")}>{busy === "sync" ? <span className="spin" /> : "Record the payment"}</button>
-                </>
+                <div className="note green">
+                  <span className="spin" style={{ marginRight: 8 }} />
+                  <b>Payment received.</b> The invoice account holds {usd(detail.held)}; the server is recording it on the registry. This takes a few seconds.
+                  <div style={{ marginTop: 8 }}>
+                    <button className="btn small ghost" disabled={!!busy} onClick={() => act("sync", { id }, "Record payment")}>Record it myself</button>
+                  </div>
+                </div>
               )}
 
               {inv.status === "Paid" && isOwner && (
@@ -143,6 +161,16 @@ export default function InvoicePage({ params }: { params: Promise<{ id: string }
               {inv.status === "Claimed" && <div className="note green">Settled. {usd(inv.received)} went to {short(inv.owner, 26)}.</div>}
               {inv.status === "Claiming" && <div className="note">A payout is in flight. The invoice is locked until it settles.</div>}
 
+              {persona?.key === "guest" && open && !covered && (
+                <div className="note">
+                  <b>Demo helper.</b> In real life {short(inv.debtor, 26)} pays on its own schedule. To finish the loop now, make the client pay this invoice, then collect it with your own account.
+                  <div style={{ marginTop: 10 }}>
+                    <button className="btn small ghost" disabled={!!busy} onClick={() => actAs("acme", "pay", { id }, "Client pays (demo helper)")}>
+                      {busy === "pay" ? <span className="spin" /> : "Make the client pay now"}
+                    </button>
+                  </div>
+                </div>
+              )}
               {!persona && <p className="muted" style={{ margin: 0 }}>Choose a persona in the header to act.</p>}
               {persona && inv.status === "Issued" && !isDebtor && !isOwner && <p className="hint" style={{ margin: 0 }}>Waiting for {inv.debtor} to confirm. Switch persona to act as them.</p>}
               {persona && inv.status === "Confirmed" && !isOwner && <p className="hint" style={{ margin: 0 }}>Only the owner, {short(inv.owner, 24)}, can list it for sale.</p>}

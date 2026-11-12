@@ -12,10 +12,10 @@ use serde_json::{json, Value};
 
 use crate::app::Shared;
 
-const TICK: Duration = Duration::from_secs(4);
+const TICK: Duration = Duration::from_secs(10);
 const RETRY_AFTER: Duration = Duration::from_secs(40);
-const CLAIMED_EVERY: Duration = Duration::from_secs(60);
-const MAX_WATCHED: usize = 60;
+const CLAIMED_EVERY: Duration = Duration::from_secs(180);
+const MAX_WATCHED: usize = 30;
 
 pub async fn run(st: Shared) {
     let keeper: AccountId = match st.cfg.keeper.parse() {

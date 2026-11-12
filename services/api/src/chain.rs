@@ -53,7 +53,12 @@ impl Chain {
         } else {
             NetworkConfig::testnet()
         };
-        network.rpc_endpoints = vec![RPCEndpoint::new(cfg.rpc_url.parse()?).with_retries(4)];
+        // Primary first; the client moves down the list when an endpoint errors or rate-limits.
+        network.rpc_endpoints = std::iter::once(cfg.rpc_url.as_str())
+            .chain(cfg.rpc_fallbacks.iter().map(String::as_str))
+            .filter_map(|u| u.parse().ok())
+            .map(|u| RPCEndpoint::new(u).with_retries(2))
+            .collect();
         let mut signers = HashMap::new();
         for (acct, sk) in &cfg.secret_keys {
             signers.insert(
@@ -93,6 +98,33 @@ impl Chain {
         T: DeserializeOwned + Send + Sync,
     {
         self.view(&self.registry, method, args).await
+    }
+
+    /// Native NEAR balance in yoctoNEAR, or 0 if the account does not exist yet.
+    pub async fn near_balance(&self, account: &AccountId) -> u128 {
+        near_api::Tokens::account(account.clone())
+            .near_balance()
+            .fetch_from(&self.network)
+            .await
+            .map(|b| b.total.as_yoctonear())
+            .unwrap_or(0)
+    }
+
+    /// Send native NEAR from a signer we hold. Creates implicit accounts on first transfer.
+    pub async fn send_near(&self, from: &AccountId, to: &AccountId, amount: NearToken) -> Result<String> {
+        let key = self.signers.get(from).ok_or_else(|| anyhow!("no key configured for {from}"))?.clone();
+        let _guard = self.tx_lock.lock().await;
+        let res = near_api::Tokens::account(from.clone())
+            .send_to(to.clone())
+            .near(amount)
+            .with_signer(key)
+            .send_to(&self.network)
+            .await
+            .map_err(|e| anyhow!("transfer: {e}"))?;
+        let full = res.into_full().ok_or_else(|| anyhow!("transfer still pending"))?;
+        let hash = full.outcomes().first().map(|o| o.transaction_hash.to_string()).unwrap_or_default();
+        full.into_result().map_err(|e| anyhow!("transfer failed: {}", clean_error(&format!("{e:?}"))))?;
+        Ok(hash)
     }
 
     pub async fn usdc_balance(&self, account: &AccountId) -> Result<u128> {

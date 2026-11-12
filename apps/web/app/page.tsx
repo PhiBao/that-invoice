@@ -4,7 +4,7 @@ import Link from "next/link";
 import { InvoiceDoc } from "@/components/InvoiceDoc";
 import { LedgerTable } from "@/components/LedgerTable";
 import { useLedger } from "@/lib/store";
-import { short, usd } from "@/lib/format";
+import { isDemoRun, short, usd } from "@/lib/format";
 import type { Invoice } from "@/lib/types";
 
 const SAMPLE: Invoice = {
@@ -28,6 +28,7 @@ const SAMPLE: Invoice = {
 export default function Home() {
   const { state } = useLedger();
   const invoices = state?.invoices ?? [];
+  const market = invoices.filter((i) => !isDemoRun(i));
   // Show the most instructive invoice: one that has changed hands.
   const showcase = invoices.find((i) => i.log.some((l) => l.kind === "Sold") && i.status === "Claimed") ?? invoices[0] ?? SAMPLE;
   const settled = invoices.filter((i) => i.status === "Claimed");
@@ -86,7 +87,7 @@ export default function Home() {
           <h2 className="h2">Latest on the ledger</h2>
           <Link href="/ledger" className="eyebrow">all invoices →</Link>
         </div>
-        <LedgerTable invoices={invoices} limit={5} />
+        <LedgerTable invoices={market} limit={6} />
       </section>
     </div>
   );

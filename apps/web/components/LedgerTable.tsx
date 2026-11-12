@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import type { Invoice } from "@/lib/types";
-import { date, short, usd } from "@/lib/format";
+import { date, daysLate, isOverdue, short, usd } from "@/lib/format";
 import { StatusStamp } from "./StatusStamp";
 
 export function LedgerTable({ invoices, limit }: { invoices: Invoice[]; limit?: number }) {
@@ -33,8 +33,8 @@ export function LedgerTable({ invoices, limit }: { invoices: Invoice[]; limit?: 
                 {i.owner !== i.issuer && <div className="sub">sold by {short(i.issuer, 20)}</div>}
               </td>
               <td className="num">{usd(i.amount)}</td>
-              <td className="mono" style={{ fontSize: 13 }}>{date(i.due_ms)}</td>
-              <td><StatusStamp status={i.status} /></td>
+              <td className="mono" style={{ fontSize: 13 }}>{date(i.due_ms)}{isOverdue(i) && <div className="sub" style={{ color: "var(--stamp-ink)" }}>{daysLate(i.due_ms)}d late</div>}</td>
+              <td><StatusStamp status={i.status} dueMs={i.due_ms} /></td>
             </tr>
           ))}
         </tbody>

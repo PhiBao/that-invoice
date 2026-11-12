@@ -58,7 +58,7 @@ export function InvoiceDoc({
               <div className="mono" style={{ fontSize: 13 }}>{date(invoice.issued_ms)}</div>
             </div>
           </div>
-          <div className="corner-stamp"><StatusStamp status={invoice.status} big /></div>
+          <div className="corner-stamp"><StatusStamp status={invoice.status} dueMs={invoice.due_ms} big /></div>
           <div className="doc-amount">
             {usd(invoice.amount, { cents: false })}
             <small>USDC</small>
@@ -85,7 +85,7 @@ export function InvoiceDoc({
               <p className="doc-title">Endorsements</p>
               <span className="doc-no">{invoice.log.length} {invoice.log.length === 1 ? "entry" : "entries"} recorded on NEAR</span>
             </div>
-            <StatusStamp status={invoice.status} />
+            <StatusStamp status={invoice.status} dueMs={invoice.due_ms} />
           </div>
           <div style={{ marginTop: 16, borderBottom: "1px solid var(--ink)", paddingBottom: 10 }}>
             <span className="eyebrow">Pay to the order of</span>

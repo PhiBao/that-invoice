@@ -27,6 +27,8 @@ pub struct Config {
     pub port: u16,
     pub network: String,
     pub rpc_url: String,
+    /// Tried in order when the primary RPC fails or rate-limits.
+    pub rpc_fallbacks: Vec<String>,
     pub registry: String,
     pub token: String,
     pub explorer: String,
@@ -39,6 +41,10 @@ pub struct Config {
     pub dao: Option<DaoCfg>,
     /// Account that signs the automatic payment-recording transactions (and funds the demo wallets).
     pub keeper: String,
+    /// Pays the gas money for guest accounts.
+    pub guest_funder: String,
+    /// Guest accounts one address may create per hour (testing can raise it).
+    pub guest_per_ip: usize,
 }
 
 impl Config {
@@ -51,6 +57,15 @@ impl Config {
                 "https://test.rpc.fastnear.com".into()
             }
         });
+        let rpc_fallbacks: Vec<String> = match env::var("NEAR_RPC_FALLBACKS") {
+            Ok(v) => v.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
+            Err(_) if network == "mainnet" => vec!["https://rpc.mainnet.near.org".into()],
+            Err(_) => vec![
+                "https://near-testnet.drpc.org".into(),
+                "https://archival-rpc.testnet.fastnear.com".into(),
+                "https://rpc.testnet.near.org".into(),
+            ],
+        };
         let registry = env::var("REGISTRY_ACCOUNT").context("REGISTRY_ACCOUNT is required")?;
         let token = env::var("USDC_ACCOUNT").unwrap_or_else(|_| "endorse-usdc.testnet".into());
         let studio = env::var("PERSONA_STUDIO").unwrap_or_else(|_| "endorse-studio.testnet".into());
@@ -103,6 +118,10 @@ impl Config {
                 .map(|h| PathBuf::from(h).join(".near-credentials"))
         });
         let mut accounts: Vec<String> = personas.iter().map(|p| p.account.clone()).collect();
+        accounts.push(env::var("GUEST_FUNDER").unwrap_or_else(|_| "endorse-acme.testnet".into()));
+        for extra in ["kestrel.endorse-studio.testnet", "loomlabs.endorse-studio.testnet", "northwind.endorse-studio.testnet"] {
+            accounts.push(extra.to_string());
+        }
         accounts.push(token.clone()); // the token account funds the demo wallets and records payments
         if let Some(d) = &dao {
             accounts.push(d.proposer.clone());
@@ -133,10 +152,12 @@ impl Config {
         });
 
         let keeper = token.clone();
+        let guest_funder = env::var("GUEST_FUNDER").unwrap_or_else(|_| "endorse-acme.testnet".into());
         Ok(Self {
             port: env::var("PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(8787),
             network,
             rpc_url,
+            rpc_fallbacks,
             registry,
             token,
             explorer,
@@ -147,6 +168,8 @@ impl Config {
             oneclick_jwt: env::var("ONECLICK_JWT").ok(),
             dao,
             keeper,
+            guest_funder,
+            guest_per_ip: env::var("GUEST_PER_IP").ok().and_then(|v| v.parse().ok()).unwrap_or(3),
         })
     }
 }

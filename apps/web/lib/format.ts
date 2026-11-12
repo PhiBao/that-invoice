@@ -72,3 +72,16 @@ export function isOpen(i: Invoice): boolean {
 export function accountUrl(explorer: string, account: string): string {
   return `${explorer}/address/${account}`;
 }
+
+/** Open and past its due date: the client has not paid. */
+export function isOverdue(i: { status: Status; due_ms: string }): boolean {
+  return (i.status === "Issued" || i.status === "Confirmed" || i.status === "Listed") && Number(i.due_ms) < Date.now();
+}
+export function daysLate(ms: string | number): number {
+  return Math.max(0, Math.floor((Date.now() - Number(ms)) / 86_400_000));
+}
+
+/** Invoices created by the guided demo or the e2e script (as opposed to the standing market). */
+export function isDemoRun(i: { number: string }): boolean {
+  return /^(DEMO|E2E|DAO)-/i.test(i.number);
+}

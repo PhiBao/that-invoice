@@ -11,11 +11,16 @@ const TONE: Record<Status, string> = {
   Claimed: "green",
 };
 
-export function StatusStamp({ status, big }: { status: Status; big?: boolean }) {
-  // key forces the thud animation to replay whenever the status changes
+/** Pass `dueMs` and an open invoice that is past due is stamped OVERDUE instead of its status. */
+export function StatusStamp({ status, big, dueMs }: { status: Status; big?: boolean; dueMs?: string }) {
+  const open = status === "Issued" || status === "Confirmed" || status === "Listed";
+  const overdue = open && dueMs !== undefined && Number(dueMs) < Date.now();
+  const label = overdue ? "Overdue" : STATUS_LABEL[status];
+  const tone = overdue ? "red" : TONE[status];
+  // key forces the thud animation to replay whenever the stamp changes
   return (
-    <span key={status} className={`stamp-tag ${TONE[status]} ${big ? "big" : ""}`}>
-      {STATUS_LABEL[status]}
+    <span key={label} className={`stamp-tag ${tone} ${big ? "big" : ""}`}>
+      {label}
     </span>
   );
 }

@@ -36,13 +36,14 @@ export interface DebtorRecord {
 }
 
 export interface Persona {
-  key: "studio" | "acme" | "fund";
+  key: "studio" | "acme" | "fund" | "guest";
   account: string;
   name: string;
   role: string;
   blurb: string;
   usdc: string;
   can_sign: boolean;
+  is_dao?: boolean;
 }
 
 export interface LedgerState {
@@ -54,6 +55,8 @@ export interface LedgerState {
   personas: Persona[];
   invoices: Invoice[];
   debtors: Record<string, DebtorRecord>;
+  rpc?: string[];
+  dao?: { account: string; proposer: string; council: string } | null;
   registry_config: { token: string; invoice_code_hash: string; invoices: string } | null;
 }
 
@@ -64,6 +67,7 @@ export interface TxOutcome {
   error: string | null;
   events: unknown[];
   gas_tgas: number;
+  extras?: { label: string; hash: string; explorer_url: string }[];
 }
 
 export interface Quote {

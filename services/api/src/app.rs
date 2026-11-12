@@ -48,6 +48,9 @@ pub struct AppState {
     pub quote_cache: Mutex<std::collections::HashMap<String, (Instant, Value)>>,
     pub state_cache: Mutex<Option<(Instant, Value)>>,
     /// Last payment-recording transaction the keeper sent per invoice, so the demo can link it.
+    /// Guest-account funding: per-IP and global sliding windows.
+    pub guest_ips: Mutex<std::collections::HashMap<String, VecDeque<Instant>>>,
+    pub guest_log: Mutex<VecDeque<Instant>>,
     pub keeper_txs: Mutex<std::collections::HashMap<String, (String, String)>>,
     pub http: reqwest::Client,
 }
@@ -133,6 +136,8 @@ pub fn router(state: Shared) -> Router {
         .route("/api/demo/run", post(demo_run).get(demo_attach))
         .route("/api/events", get(events))
         .route("/api/quote", get(get_quote))
+        .route("/api/guest", post(post_guest))
+        .route("/api/balance/{account}", get(get_balance))
         .route("/api/docs", post(post_doc))
         .route("/api/docs/{hash}", get(get_doc))
         .layer(CompressionLayer::new())
@@ -160,7 +165,7 @@ pub async fn poll_loop(st: Shared) {
             }
             Err(e) => tracing::warn!("poll failed: {e:#}"),
         }
-        tokio::time::sleep(Duration::from_millis(2500)).await;
+        tokio::time::sleep(Duration::from_millis(4000)).await;
     }
 }
 
@@ -260,6 +265,7 @@ async fn get_state(State(st): State<Shared>) -> Result<Json<Value>, ApiError> {
         "registry": st.cfg.registry,
         "token": st.cfg.token,
         "explorer": st.cfg.explorer,
+        "rpc": st.cfg.rpc_fallbacks.iter().cloned().chain(std::iter::once(st.cfg.rpc_url.clone())).collect::<Vec<_>>(),
         "registry_config": reg_cfg,
         "dao": st.cfg.dao.as_ref().map(|d| json!({ "account": d.account, "proposer": d.proposer, "council": d.council })),
         "stale": stale,
@@ -700,4 +706,161 @@ async fn get_doc(State(st): State<Shared>, Path(hash): Path<String>) -> Result<J
         .map_err(|_| ApiError(StatusCode::NOT_FOUND, "no such document".into()))?;
     let verified = hex::encode(Sha256::digest(raw.as_bytes())) == hex.to_lowercase();
     Ok(Json(json!({ "doc_hash": format!("sha256:{hex}"), "verified": verified, "document": serde_json::from_str::<Value>(&raw).unwrap_or(Value::Null) })))
+}
+
+// ───────────────────────────── guest accounts ─────────────────────────────
+//
+// A visitor's browser generates an ed25519 key. The matching *implicit* NEAR account is the 64-character hex of
+// the public key, so it exists the moment it receives NEAR. We send it a little gas money and some demo USDC;
+// from then on the browser signs its own transactions. The server never sees the secret key.
+
+const B58: &[u8; 58] = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+fn base58_decode(s: &str) -> Option<Vec<u8>> {
+    let mut out: Vec<u8> = Vec::new();
+    for ch in s.bytes() {
+        let mut carry = B58.iter().position(|&c| c == ch)? as u32;
+        for b in out.iter_mut() {
+            carry += (*b as u32) * 58;
+            *b = (carry & 0xff) as u8;
+            carry >>= 8;
+        }
+        while carry > 0 {
+            out.push((carry & 0xff) as u8);
+            carry >>= 8;
+        }
+    }
+    for _ in s.bytes().take_while(|&c| c == b'1') {
+        out.push(0);
+    }
+    out.reverse();
+    Some(out)
+}
+
+/// `ed25519:<base58>` -> the implicit account id (lowercase hex of the 32 key bytes).
+pub fn implicit_account(public_key: &str) -> Option<String> {
+    let raw = public_key.strip_prefix("ed25519:")?;
+    let bytes = base58_decode(raw)?;
+    if bytes.len() != 32 {
+        return None;
+    }
+    Some(hex::encode(bytes))
+}
+
+#[derive(Deserialize)]
+struct GuestReq {
+    public_key: String,
+}
+
+fn client_ip(h: &axum::http::HeaderMap) -> String {
+    for name in ["fly-client-ip", "x-forwarded-for", "x-real-ip"] {
+        if let Some(v) = h.get(name).and_then(|v| v.to_str().ok()) {
+            return v.split(',').next().unwrap_or("").trim().to_string();
+        }
+    }
+    "local".into()
+}
+
+/// Gas money for a guest. Prepaid gas is refunded, so this covers a few full journeys.
+const GUEST_NEAR: NearToken = NearToken::from_millinear(300);
+const GUEST_MIN_NEAR: u128 = 150_000_000_000_000_000_000_000; // below this a guest is topped up
+const GUEST_USDC: u128 = 10_000_000_000; // 10,000 demo USDC: enough to buy any invoice in the seeded market
+
+async fn post_guest(
+    State(st): State<Shared>,
+    headers: axum::http::HeaderMap,
+    Json(req): Json<GuestReq>,
+) -> Result<Json<Value>, ApiError> {
+    let account = implicit_account(&req.public_key).ok_or_else(|| bad("public_key must be an ed25519 key"))?;
+    let acct: AccountId = account.parse().map_err(|_| bad("bad account"))?;
+    let usdc_have = st.chain.usdc_balance(&acct).await.unwrap_or(0);
+    let near_have = st.chain.near_balance(&acct).await;
+
+    // Returning visitors who are already funded cost nothing.
+    if near_have >= GUEST_MIN_NEAR && usdc_have >= 1_000_000_000 {
+        return Ok(Json(json!({ "account_id": account, "funded": false, "usdc": micro(usdc_have), "near": near_have.to_string() })));
+    }
+    let ip = client_ip(&headers);
+    {
+        let mut m = st.guest_ips.lock().await;
+        let log = m.entry(ip.clone()).or_default();
+        let now = Instant::now();
+        while log.front().is_some_and(|t| now.duration_since(*t) > Duration::from_secs(3600)) {
+            log.pop_front();
+        }
+        if log.len() >= st.cfg.guest_per_ip {
+            return Err(ApiError(StatusCode::TOO_MANY_REQUESTS, "you already created guest accounts from this address; try again in an hour".into()));
+        }
+        log.push_back(now);
+    }
+    if !within(&st.guest_log, 20, Duration::from_secs(3600)).await {
+        return Err(ApiError(StatusCode::TOO_MANY_REQUESTS, "the demo is handing out a lot of guest accounts right now; try again shortly".into()));
+    }
+
+    let funder: AccountId = st.cfg.guest_funder.parse().map_err(|_| bad("guest funding is not configured"))?;
+    if !st.chain.can_sign(&funder) {
+        return Err(ApiError(StatusCode::SERVICE_UNAVAILABLE, "guest funding is not configured".into()));
+    }
+    // Don't hand out the last of the demo's NEAR.
+    if st.chain.near_balance(&funder).await < 1_500_000_000_000_000_000_000_000 {
+        return Err(ApiError(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "guest accounts are temporarily unavailable (the demo faucet is empty). The server personas still work.".into(),
+        ));
+    }
+    let token = st.chain.token.clone();
+    // 1. gas money (this also creates the implicit account)
+    if near_have < GUEST_MIN_NEAR {
+        st.chain.send_near(&funder, &acct, GUEST_NEAR).await?;
+    }
+    // 2. register on the token and 3. send demo USDC
+    let reg: Value = st.chain.view(&token, "storage_balance_of", json!({ "account_id": acct })).await.unwrap_or(Value::Null);
+    if reg.is_null() {
+        let out = st
+            .chain
+            .call(&token, &token, "storage_deposit", json!({ "account_id": acct, "registration_only": true }), NearToken::from_millinear(2), 30)
+            .await?;
+        if !out.ok {
+            return Err(ApiError(StatusCode::BAD_GATEWAY, out.error.unwrap_or_default()));
+        }
+    }
+    if usdc_have < 1_000_000_000 {
+        let out = st
+            .chain
+            .call(&token, &token, "ft_transfer", json!({ "receiver_id": acct, "amount": micro(GUEST_USDC) }), NearToken::from_yoctonear(1), 30)
+            .await?;
+        if !out.ok {
+            return Err(ApiError(StatusCode::BAD_GATEWAY, out.error.unwrap_or_default()));
+        }
+    }
+    let usdc = st.chain.usdc_balance(&acct).await.unwrap_or(0);
+    Ok(Json(json!({ "account_id": account, "funded": true, "usdc": micro(usdc), "near": GUEST_NEAR.as_yoctonear().to_string() })))
+}
+
+async fn get_balance(State(st): State<Shared>, Path(account): Path<String>) -> Result<Json<Value>, ApiError> {
+    let acct: AccountId = account.parse().map_err(|_| bad("invalid account"))?;
+    let usdc = st.chain.usdc_balance(&acct).await.unwrap_or(0);
+    let near = st.chain.near_balance(&acct).await;
+    Ok(Json(json!({ "account_id": account, "usdc": micro(usdc), "near": near.to_string() })))
+}
+
+#[cfg(test)]
+mod guest_tests {
+    use super::implicit_account;
+
+    #[test]
+    fn implicit_account_matches_near_api_js() {
+        assert_eq!(implicit_account("ed25519:FNm6T6Baz3oQ8Uz2ENTdBBW5ixyV8iKPak6N1w5cPFGe").as_deref(), Some("d596abd1409e1ffcdc38cf6df9d3e09d2c31896adbf4b7b9c32b9930ad2b7723"));
+        assert_eq!(implicit_account("ed25519:D6ASynjExGML98QharEWDSZGvoDhKvyNw6vWtXpvqe4H").as_deref(), Some("b39ed477dc980cd05d88ed613a1f0494ef37e16548911559be1f70e4b357a122"));
+        assert_eq!(implicit_account("ed25519:E1VQCKrpGjNVapRJENCCK1fvTtFzzbHoBTQ4C6eRTvHT").as_deref(), Some("c1480abc17db7d7432c2758b90bdd5b9011ea310e9352ca234be6e0414f9219e"));
+        assert_eq!(implicit_account("ed25519:5KC5Qwek92ENdukyP396vjAsqgJUwWHdd3QCShdYN8uj").as_deref(), Some("4017b9dd74f21c74f0d585b8215b01768d93df46e16917c6c615eab124a05626"));
+    }
+
+    #[test]
+    fn rejects_malformed_keys() {
+        assert!(implicit_account("secp256k1:abc").is_none());
+        assert!(implicit_account("ed25519:").is_none());
+        assert!(implicit_account("ed25519:0OIl").is_none()); // characters outside base58
+        assert!(implicit_account("ed25519:3yZe7d").is_none()); // wrong length
+    }
 }
