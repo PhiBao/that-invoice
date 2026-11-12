@@ -92,6 +92,9 @@ impl Chain {
         let data = Contract(contract.clone())
             .call_function(method, args)
             .read_only::<T>()
+            // Optimistic reads see a transaction's effects about a second after it lands; the default (final)
+            // lags by a block or two, which makes the UI briefly show its own writes as missing.
+            .at(near_api::types::Reference::Optimistic)
             .fetch_from(&self.network)
             .await
             .map_err(|e| anyhow!("view {contract}.{method}: {e}"))?;
@@ -124,6 +127,7 @@ impl Chain {
             .send_to(to.clone())
             .near(amount)
             .with_signer(key)
+            .wait_until(near_api::types::TxExecutionStatus::ExecutedOptimistic)
             .send_to(&self.network)
             .await
             .map_err(|e| anyhow!("transfer: {e}"))?;
@@ -164,6 +168,8 @@ impl Chain {
             .deposit(deposit)
             .gas(NearGas::from_tgas(gas_tgas))
             .with_signer(signer.clone(), key)
+            // Wait until every receipt has executed (so callback failures are reported), not until finality.
+            .wait_until(near_api::types::TxExecutionStatus::ExecutedOptimistic)
             .send_to(&self.network)
             .await
             .map_err(|e| anyhow!("send {method}: {e}"))?;
