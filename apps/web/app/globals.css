@@ -20,6 +20,11 @@
   --font-ui: var(--font-geist), system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", monospace;
 
+  /* the scripted cursor used when recording demo videos */
+  --demo-cursor: rgba(201, 58, 30, 0.95);
+  --demo-cursor-fill: rgba(201, 58, 30, 0.16);
+  --demo-cursor-glow: rgba(201, 58, 30, 0.35);
+
   --edge: clamp(20px, 4vw, 56px);
   --max: 1240px;
 }
