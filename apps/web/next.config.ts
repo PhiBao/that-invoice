@@ -6,6 +6,7 @@ const API = process.env.API_URL ?? "http://localhost:8787";
 
 const config: NextConfig = {
   reactStrictMode: true,
+  compress: false,
   output: "standalone",
   outputFileTracingRoot: path.join(__dirname, "../.."),
   async rewrites() {
