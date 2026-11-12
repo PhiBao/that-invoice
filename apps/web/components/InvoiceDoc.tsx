@@ -46,7 +46,7 @@ export function InvoiceDoc({
   const paid = invoice.status === "Paid" || invoice.status === "Claiming" || invoice.status === "Claimed";
   return (
     <div className="doc-stage">
-      <div className={`doc ${flipped ? "flipped" : ""}`} style={compact ? { aspectRatio: "1 / 1.0", minHeight: 520 } : undefined}>
+      <div className={`doc ${flipped ? "flipped" : ""}`} style={compact ? { aspectRatio: "1 / 1.2", minHeight: 640 } : undefined}>
         <section className="face front" aria-hidden={flipped} aria-label="Front of the invoice">
           <div className="doc-head">
             <div>

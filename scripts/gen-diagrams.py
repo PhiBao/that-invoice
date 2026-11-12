@@ -185,7 +185,7 @@ def architecture():
         return o
 
     s += box(40, 120, 270, 190, "Browser", ["Next.js 16 · React 19", "invoice document with a back side", "ledger, buyer desk, live demo", "SSE keeps it in sync", "persona switcher"], tag="TYPESCRIPT")
-    s += box(380, 120, 330, 190, "Rust API (Axum, Tokio)", ["read model: polls registry, caches, SSE", "act: signs txs for demo personas", "demo: streams a real 9-step lifecycle", "quote: 1Click dry-run proxy", "docs: SHA-256 content store", "rate limits, no secrets in logs"], tag="RUST")
+    s += box(380, 120, 330, 190, "Rust API (Axum, Tokio)", ["read model: polls registry, caches, SSE", "act: signs txs for demo personas", "demo: a server-side job; clients replay it", "quote: 1Click dry-run proxy", "docs: SHA-256 content store", "rate limits; keys only in env/secrets"], tag="RUST")
     s += box(780, 120, 460, 190, "NEAR testnet", ["registry.testnet   NEP-171 + market + records", "inv-N.registry     one account per invoice,", "                   shared immutable global contract", "usdc.testnet       NEP-141 (demo USDC)", "public RPC (fastnear)"], tag="CONTRACTS")
     s += box(380, 380, 330, 130, "NEAR Intents · 1Click API", ["dry quotes: what a Base, Arbitrum,", "Ethereum or Solana payer would send", "mainnet liquidity; no testnet exists"], tag="EXTERNAL")
     s += box(40, 380, 270, 130, "Document store", ["invoice line items stay off-chain", "only the hash is on-chain", "GET re-verifies the hash"], tag="FILES")
