@@ -1,8 +1,8 @@
-# Endorse
+# That Invoice
 
 **The invoice is the account.**
 
-Endorse gives every invoice its own NEAR account. The client pays that account from any chain. The business can sell the invoice for cash today, and whoever owns it when it is paid collects. The payment address never changes, so nothing has to be forwarded and nothing can be sold twice.
+That Invoice gives every invoice its own NEAR account. The client pays that account from any chain. The business can sell the invoice for cash today, and whoever owns it when it is paid collects. The payment address never changes, so nothing has to be forwarded and nothing can be sold twice.
 
 Built for **NEAR HACKATHON 2026**. Primary track: **NFTs That Do Something** (`nfts`). Also fits **Real-World Money** (`realworld`) and **Unstoppable DeFi** (`defi`).
 
@@ -40,7 +40,7 @@ A freelancer, studio or agency that bills crypto-native clients (DAOs, protocols
 
 When the payment address *is* the asset, a sale needs no notice to the client and no forwarding step. Whoever owns the invoice token when the payment arrives can collect it. Two sellers cannot both own it, and the old owner cannot redirect the money.
 
-| | Factoring / pools | Endorse |
+| | Factoring / pools | That Invoice |
 |---|---|---|
 | Who the client pays | The original business | The invoice account itself |
 | After a sale | Business forwards the money | Nothing to forward; the buyer collects |
@@ -124,7 +124,7 @@ deployment.json             what is deployed on testnet
 **Prerequisites:** Rust (stable or nightly) with the `wasm32-unknown-unknown` target, Node 22+, pnpm 11, and [`binaryen`](https://github.com/WebAssembly/binaryen) for `wasm-opt` (optional; only for size).
 
 ```bash
-git clone <this repository> && cd endorse
+git clone <this repository> && cd that-invoice
 pnpm install
 ```
 
@@ -135,7 +135,7 @@ You need the persona keys in `~/.near-credentials/testnet/` (the repo does not c
 ```bash
 cp .env.example .env                       # points at endorse-v1.testnet
 set -a; . ./.env; set +a
-cargo run -p endorse-api --release         # API on :8787
+cargo run -p that-invoice-api --release         # API on :8787
 pnpm --dir apps/web build && pnpm --dir apps/web start    # web on :3000 (API_URL defaults to http://localhost:8787)
 ```
 
@@ -149,7 +149,7 @@ FUNDER=you.testnet node scripts/bootstrap.mjs        # sub-accounts of a funded 
 # or, without a funded account (the public faucet is rate limited):
 node scripts/bootstrap.mjs
 set -a; . ./.env; set +a
-cargo run -p endorse-api --release
+cargo run -p that-invoice-api --release
 pnpm --dir apps/web build && pnpm --dir apps/web start
 ```
 
@@ -163,7 +163,7 @@ REGISTRY_ACCOUNT=endorse-v1.testnet node scripts/e2e.mjs   # full lifecycle on t
 
 ### Environment variables
 
-See [`.env.example`](.env.example). The important ones: `REGISTRY_ACCOUNT`, `USDC_ACCOUNT`, `PERSONA_*`, `ENDORSE_KEYS` (JSON of secret keys for production, instead of `~/.near-credentials`), `ALLOWED_ORIGIN`, `ONECLICK_JWT`.
+See [`.env.example`](.env.example). The important ones: `REGISTRY_ACCOUNT`, `USDC_ACCOUNT`, `PERSONA_*`, `NEAR_KEYS` (JSON of secret keys for production, instead of `~/.near-credentials`), `ALLOWED_ORIGIN`, `ONECLICK_JWT`.
 
 ---
 
@@ -213,7 +213,7 @@ Open-source libraries only (`near-sdk`, `near-api`, Axum, Tokio, Next.js, React,
 
 ### Other project by the same builder
 
-[**Bonded**](https://github.com/PhiBao/bonded) (performance bonds for AI agents) was also submitted to this hackathon by the same builder. It is independent of Endorse: different problem, different contracts, different code.
+[**Bonded**](https://github.com/PhiBao/bonded) (performance bonds for AI agents) was also submitted to this hackathon by the same builder. It is independent of That Invoice: different problem, different contracts, different code.
 
 ## License
 

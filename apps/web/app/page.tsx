@@ -41,7 +41,7 @@ export default function Home() {
           <p className="eyebrow" style={{ marginBottom: 18 }}>Receivables on NEAR · built for NEAR HACKATHON</p>
           <h1 className="h1">The invoice <em>is</em> the account.</h1>
           <p className="lede" style={{ marginTop: 22 }}>
-            Endorse gives every invoice its own NEAR address. The client pays that address from any chain.
+            That Invoice gives every invoice its own NEAR address. The client pays that address from any chain.
             The business can sell the invoice for cash today, and whoever owns it when it is paid collects.
             The payment address never changes, so nothing has to be forwarded and nothing can be sold twice.
           </p>

@@ -76,6 +76,7 @@ pub fn router(state: Shared) -> Router {
     };
     Router::new()
         .route("/healthz", get(|| async { "ok" }))
+        .route("/api/health", get(|| async { "ok" }))
         .route("/api/state", get(get_state))
         .route("/api/invoices/{id}", get(get_invoice))
         .route("/api/debtors/{account}", get(get_debtor))
@@ -112,6 +113,15 @@ pub async fn poll_loop(st: Shared) {
         }
         tokio::time::sleep(Duration::from_millis(2500)).await;
     }
+}
+
+/// Read the registry once and publish it. Used at startup and by the poller.
+pub async fn refresh_now(st: &Shared) -> Result<usize> {
+    let list = fetch_all_invoices(st).await?;
+    let n = list.len();
+    *st.invoices.write().await = list;
+    *st.last_ok.write().await = Some(Instant::now());
+    Ok(n)
 }
 
 async fn fetch_all_invoices(st: &Shared) -> Result<Vec<Value>> {

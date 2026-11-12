@@ -1,4 +1,4 @@
-// Stand up your own complete Endorse deployment on NEAR testnet in about a minute.
+// Stand up your own complete That Invoice deployment on NEAR testnet in about a minute.
 //   node scripts/bootstrap.mjs            # random prefix
 //   PREFIX=myteam node scripts/bootstrap.mjs
 // With FUNDER=you.testnet (a funded account whose key is in ~/.near-credentials) the accounts are created
@@ -28,7 +28,7 @@ for (const [k, id] of Object.entries(ids)) {
 const usdc = account(ids.usdc);
 await usdc.useGlobalContract({ accountId: dep.globalFt });
 await usdc.callFunction({ contractId: ids.usdc, methodName: "new", gas: TGAS(30),
-  args: { owner_id: ids.usdc, total_supply: "1000000000000000", metadata: { spec: "ft-1.0.0", name: "Demo USDC (Endorse testnet)", symbol: "USDC", decimals: 6 } } });
+  args: { owner_id: ids.usdc, total_supply: "1000000000000000", metadata: { spec: "ft-1.0.0", name: "Demo USDC (That Invoice testnet)", symbol: "USDC", decimals: 6 } } });
 log("demo USDC ready on", ids.usdc);
 
 // registry
@@ -60,5 +60,5 @@ const env = [
 ].join("\n");
 fs.writeFileSync(path.join(root, ".env"), env);
 log("wrote .env");
-console.log("\nNext:\n  set -a; . ./.env; set +a\n  cargo run -p endorse-api --release     # terminal 1\n  pnpm --dir apps/web build && pnpm --dir apps/web start   # terminal 2\n  open http://localhost:3000/demo");
+console.log("\nNext:\n  set -a; . ./.env; set +a\n  cargo run -p that-invoice-api --release     # terminal 1\n  pnpm --dir apps/web build && pnpm --dir apps/web start   # terminal 2\n  open http://localhost:3000/demo");
 console.log("registry balance:", await balance(ids.reg), "NEAR; registry config:", JSON.stringify(await view(ids.reg, "config")));

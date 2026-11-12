@@ -1,4 +1,4 @@
-//! The contract that runs on every Endorse invoice account.
+//! The contract that runs on every That Invoice invoice account.
 //!
 //! An invoice is a NEAR account. Whoever pays the invoice sends a NEP-141 token
 //! (USDC) to this account. The account holds the money and has exactly one

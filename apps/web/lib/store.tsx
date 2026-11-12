@@ -18,6 +18,7 @@ interface Ctx {
   setPersonaKey: (k: Persona["key"]) => void;
   act: (action: string, params?: Record<string, unknown>, label?: string) => Promise<TxOutcome | null>;
   busy: string | null;
+  waking: boolean;
   toasts: Toast[];
   dismiss: (id: number) => void;
   refresh: () => Promise<void>;
@@ -40,7 +41,7 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
   const seq = useRef(0);
 
   useEffect(() => {
-    const saved = localStorage.getItem("endorse.persona") as Persona["key"] | null;
+    const saved = localStorage.getItem("thatinvoice.persona") as Persona["key"] | null;
     if (saved === "studio" || saved === "acme" || saved === "fund") setKey(saved);
   }, []);
 
@@ -78,6 +79,14 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
     };
   }, [refresh]);
 
+  // Cold start: Fly may have stopped the machine. Retry quickly until the first state arrives.
+  const waking = !state && !!error;
+  useEffect(() => {
+    if (!waking) return;
+    const t = setTimeout(refresh, 2000);
+    return () => clearTimeout(t);
+  }, [waking, error, refresh]);
+
   const persona = useMemo(
     () => state?.personas.find((p) => p.key === personaKey) ?? null,
     [state, personaKey],
@@ -85,7 +94,7 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
 
   const setPersonaKey = useCallback((k: Persona["key"]) => {
     setKey(k);
-    localStorage.setItem("endorse.persona", k);
+    localStorage.setItem("thatinvoice.persona", k);
   }, []);
 
   const push = useCallback((t: Omit<Toast, "id">) => {
@@ -127,8 +136,8 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ state, error, persona, setPersonaKey, act, busy, toasts, dismiss, refresh }),
-    [state, error, persona, setPersonaKey, act, busy, toasts, dismiss, refresh],
+    () => ({ state, error, persona, setPersonaKey, act, busy, waking, toasts, dismiss, refresh }),
+    [state, error, persona, setPersonaKey, act, busy, waking, toasts, dismiss, refresh],
   );
   return <LedgerCtx.Provider value={value}>{children}</LedgerCtx.Provider>;
 }

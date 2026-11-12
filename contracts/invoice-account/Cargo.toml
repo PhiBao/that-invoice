@@ -3,7 +3,7 @@ name = "invoice-account"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-description = "The tiny contract every Endorse invoice account runs (published once as a NEP-591 global contract, by hash)."
+description = "The tiny contract every That Invoice invoice account runs (published once as a NEP-591 global contract, by hash)."
 
 [lib]
 crate-type = ["cdylib", "rlib"]

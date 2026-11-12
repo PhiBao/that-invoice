@@ -7,7 +7,7 @@ export function Footer() {
   return (
     <footer className="foot">
       <div className="wrap">
-        <span>Endorse · built at NEAR HACKATHON · MIT licensed</span>
+        <span>That Invoice · built at NEAR HACKATHON · MIT licensed</span>
         <span className="mono">
           {state ? (
             <>

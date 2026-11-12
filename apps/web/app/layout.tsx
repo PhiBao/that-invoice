@@ -5,17 +5,18 @@ import { LedgerProvider } from "@/lib/store";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { Toasts } from "@/components/Toasts";
+import { WakeBanner } from "@/components/WakeBanner";
 
 const display = Newsreader({ subsets: ["latin"], variable: "--font-newsreader", style: ["normal", "italic"], display: "swap" });
 const ui = Geist({ subsets: ["latin"], variable: "--font-geist", display: "swap" });
 const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "Endorse: the invoice is the account",
+  title: "That Invoice: the invoice is the account",
   description:
-    "Endorse turns an invoice into a NEAR account. The client pays it from any chain, the issuer can sell it for cash today, and whoever owns it when it is paid collects.",
+    "That Invoice turns an invoice into a NEAR account. The client pays it from any chain, the issuer can sell it for cash today, and whoever owns it when it is paid collects.",
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
-  openGraph: { title: "Endorse", description: "The invoice is the account.", type: "website" },
+  openGraph: { title: "That Invoice", description: "The invoice is the account.", type: "website" },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -24,6 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <LedgerProvider>
           <Header />
+          <WakeBanner />
           <main>{children}</main>
           <Footer />
           <Toasts />

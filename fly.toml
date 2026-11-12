@@ -1,0 +1,47 @@
+# That Invoice on Fly.io (API + web in one machine, scales to zero).
+#   fly secrets set NEAR_KEYS='{"endorse-studio.testnet":"ed25519:...", ...}'
+#   fly deploy
+app = "that-invoice"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NEAR_NETWORK = "testnet"
+  REGISTRY_ACCOUNT = "endorse-v1.testnet"
+  USDC_ACCOUNT = "endorse-usdc.testnet"
+  PERSONA_STUDIO = "endorse-studio.testnet"
+  PERSONA_ACME = "endorse-acme.testnet"
+  PERSONA_FUND = "endorse-fund.testnet"
+  DATA_DIR = "/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"
+
+# Invoice line-item documents (only their hash is on-chain). The chain is the source of truth for everything else.
+[mounts]
+  source = "that_invoice_data"
+  destination = "/data"
+
+# Scale to zero when idle. A cold start is the Rust API warming its read model (about 2-3 s) plus Next.js
+# (about 1 s). The entrypoint opens the public port only after the API answers, and the web app shows a
+# "waking the demo server" banner and retries while the first request is in flight.
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 40
+    hard_limit = 80
+
+  [[http_service.checks]]
+    grace_period = "25s"
+    interval = "30s"
+    method = "GET"
+    path = "/api/health"
+    timeout = "10s"

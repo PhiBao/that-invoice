@@ -1,4 +1,4 @@
-//! Endorse registry.
+//! That Invoice registry.
 //!
 //! Every invoice is three things at once:
 //!
@@ -308,7 +308,7 @@ impl Registry {
             }
             Promise::new(issuer).transfer(NearToken::from_yoctonear(deposit.0));
             emit(
-                "endorse",
+                "thatinvoice",
                 "1.0.0",
                 "issue_failed",
                 near_sdk::serde_json::json!([{ "invoice": id }]),
@@ -332,7 +332,7 @@ impl Registry {
             near_sdk::serde_json::json!([{ "owner_id": owner, "token_ids": [id.to_string()] }]),
         );
         emit(
-            "endorse",
+            "thatinvoice",
             "1.0.0",
             "issued",
             near_sdk::serde_json::json!([{
@@ -360,7 +360,7 @@ impl Registry {
         rec.confirmed += 1;
         self.debtors.insert(debtor.clone(), rec);
         emit(
-            "endorse",
+            "thatinvoice",
             "1.0.0",
             "confirmed",
             near_sdk::serde_json::json!([{ "invoice": id, "debtor": debtor }]),
@@ -379,7 +379,7 @@ impl Registry {
         self.push_log(&mut inv, Kind::Listed, caller.clone(), None, Some(price));
         self.invoices.insert(id.clone(), inv);
         emit(
-            "endorse",
+            "thatinvoice",
             "1.0.0",
             "listed",
             near_sdk::serde_json::json!([{ "invoice": id, "owner": caller, "price": price }]),
@@ -396,7 +396,7 @@ impl Registry {
         self.push_log(&mut inv, Kind::Delisted, caller.clone(), None, None);
         self.invoices.insert(id.clone(), inv);
         emit(
-            "endorse",
+            "thatinvoice",
             "1.0.0",
             "delisted",
             near_sdk::serde_json::json!([{ "invoice": id, "owner": caller }]),
@@ -444,7 +444,7 @@ impl Registry {
         self.invoices.insert(id.clone(), inv);
 
         // Then pay the seller. If the push fails the proceeds are credited for withdrawal.
-        let _detached = ft_transfer(&self.token, &seller, price.0, "endorse sale").then(
+        let _detached = ft_transfer(&self.token, &seller, price.0, "that-invoice sale").then(
             Self::ext(env::current_account_id())
                 .with_static_gas(GAS_CALLBACK)
                 .on_proceeds_sent(seller.clone(), price),
@@ -460,7 +460,7 @@ impl Registry {
             }]),
         );
         emit(
-            "endorse",
+            "thatinvoice",
             "1.0.0",
             "sold",
             near_sdk::serde_json::json!([{
@@ -476,7 +476,7 @@ impl Registry {
             let cur = self.proceeds.get(&to).copied().unwrap_or(0);
             self.proceeds.insert(to.clone(), cur + amount.0);
             emit(
-                "endorse",
+                "thatinvoice",
                 "1.0.0",
                 "proceeds_credited",
                 near_sdk::serde_json::json!([{ "account": to, "amount": amount }]),
@@ -489,7 +489,7 @@ impl Registry {
         let who = env::predecessor_account_id();
         let amount = self.proceeds.remove(&who).unwrap_or(0);
         require!(amount > 0, "no proceeds to withdraw");
-        ft_transfer(&self.token, &who, amount, "endorse proceeds").then(
+        ft_transfer(&self.token, &who, amount, "that-invoice proceeds").then(
             Self::ext(env::current_account_id())
                 .with_static_gas(GAS_CALLBACK)
                 .on_proceeds_sent(who, U128(amount)),
@@ -559,7 +559,7 @@ impl Registry {
                 rec.paid_total = U128(rec.paid_total.0.saturating_add(face));
                 self.debtors.insert(debtor, rec);
                 emit(
-                    "endorse",
+                    "thatinvoice",
                     "1.0.0",
                     "paid",
                     near_sdk::serde_json::json!([{
@@ -613,7 +613,7 @@ impl Registry {
             self.push_log(&mut inv, Kind::Claimed, to.clone(), None, Some(amount));
             self.invoices.insert(id.clone(), inv);
             emit(
-                "endorse",
+                "thatinvoice",
                 "1.0.0",
                 "claimed",
                 near_sdk::serde_json::json!([{ "invoice": id, "owner": to, "amount": amount }]),
@@ -719,7 +719,7 @@ impl Registry {
     pub fn nft_metadata(&self) -> NftContractMetadata {
         NftContractMetadata {
             spec: "nft-1.0.0".to_string(),
-            name: "Endorse invoices".to_string(),
+            name: "That Invoice".to_string(),
             symbol: "INV".to_string(),
             icon: None,
             base_uri: None,

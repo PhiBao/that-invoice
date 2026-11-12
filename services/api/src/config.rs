@@ -69,10 +69,10 @@ impl Config {
         ];
 
         let mut secret_keys = HashMap::new();
-        // Preferred in production: ENDORSE_KEYS='{"account.testnet":"ed25519:..."}'
-        if let Ok(raw) = env::var("ENDORSE_KEYS") {
+        // Preferred in production: NEAR_KEYS='{"account.testnet":"ed25519:..."}'
+        if let Ok(raw) = env::var("NEAR_KEYS") {
             let m: HashMap<String, String> =
-                serde_json::from_str(&raw).context("ENDORSE_KEYS must be a JSON object")?;
+                serde_json::from_str(&raw).context("NEAR_KEYS must be a JSON object")?;
             secret_keys.extend(m);
         }
         // Local development: read the standard near-cli credential files.

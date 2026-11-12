@@ -38,9 +38,9 @@ export function Header() {
   return (
     <header className="top">
       <div className="wrap">
-        <Link href="/" className="brand" aria-label="Endorse home">
+        <Link href="/" className="brand" aria-label="That Invoice home">
           <Mark />
-          <b>Endorse</b>
+          <b>That Invoice</b>
         </Link>
         <nav className="nav" aria-label="Main">
           {NAV.map((n) => (

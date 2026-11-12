@@ -189,7 +189,7 @@ def architecture():
     s += box(780, 120, 460, 190, "NEAR testnet", ["registry.testnet   NEP-171 + market + records", "inv-N.registry     one account per invoice,", "                   shared immutable global contract", "usdc.testnet       NEP-141 (demo USDC)", "public RPC (fastnear)"], tag="CONTRACTS")
     s += box(380, 380, 330, 130, "NEAR Intents · 1Click API", ["dry quotes: what a Base, Arbitrum,", "Ethereum or Solana payer would send", "mainnet liquidity; no testnet exists"], tag="EXTERNAL")
     s += box(40, 380, 270, 130, "Document store", ["invoice line items stay off-chain", "only the hash is on-chain", "GET re-verifies the hash"], tag="FILES")
-    s += box(780, 380, 460, 130, "Explorer", ["every demo step links to its tx", "invoice accounts are viewable on nearblocks", "events: NEP-171 + endorse/1.0.0 (NEP-297)"], tag="PROOF")
+    s += box(780, 380, 460, 130, "Explorer", ["every demo step links to its tx", "invoice accounts are viewable on nearblocks", "events: NEP-171 + thatinvoice/1.0.0 (NEP-297)"], tag="PROOF")
 
     def arrow(x1, y1, x2, y2, label=None, color=INK, mk="a", lx=None, ly=None):
         o = f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{color}" stroke-width="1.7" marker-end="url(#{mk})"/>'

@@ -22,7 +22,7 @@ async fn main() -> anyhow::Result<()> {
     let chain = chain::Chain::new(&cfg)?;
     let (tx, _) = broadcast::channel(16);
     let port = cfg.port;
-    tracing::info!(registry = %cfg.registry, network = %cfg.network, rpc = %cfg.rpc_url, "starting endorse-api");
+    tracing::info!(registry = %cfg.registry, network = %cfg.network, rpc = %cfg.rpc_url, "starting that-invoice-api");
     for p in &cfg.personas {
         tracing::info!(persona = p.key, account = %p.account, key_loaded = cfg.secret_keys.contains_key(&p.account));
     }
@@ -39,9 +39,15 @@ async fn main() -> anyhow::Result<()> {
         demo_log: Mutex::new(VecDeque::new()),
         quote_cache: Mutex::new(HashMap::new()),
         state_cache: Mutex::new(None),
-        http: reqwest::Client::builder().user_agent("endorse-api/0.1").build()?,
+        http: reqwest::Client::builder().user_agent("that-invoice-api/0.1").build()?,
     });
 
+    // Warm the read model before serving, so the first request after a cold start already has data.
+    match tokio::time::timeout(std::time::Duration::from_secs(8), app::refresh_now(&state)).await {
+        Ok(Ok(n)) => tracing::info!(invoices = n, "read model warmed"),
+        Ok(Err(e)) => tracing::warn!("initial read failed, continuing: {e:#}"),
+        Err(_) => tracing::warn!("initial read timed out, continuing"),
+    }
     tokio::spawn(app::poll_loop(state.clone()));
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", port)).await?;
     tracing::info!("listening on :{port}");

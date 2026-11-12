@@ -38,7 +38,7 @@ if (!usdcReady) {
   await usdc.callFunction({
     contractId: USDC, methodName: "new", gas: TGAS(30),
     args: { owner_id: USDC, total_supply: "1000000000000000", metadata: {
-      spec: "ft-1.0.0", name: "Demo USDC (Endorse testnet)", symbol: "USDC", decimals: 6 } },
+      spec: "ft-1.0.0", name: "Demo USDC (That Invoice testnet)", symbol: "USDC", decimals: 6 } },
   });
 }
 log("USDC metadata", JSON.stringify(await view(USDC, "ft_metadata")));
