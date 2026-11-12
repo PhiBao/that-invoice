@@ -4,7 +4,7 @@ import { account, view, call, NEAR, TGAS, provider } from "./lib.mjs";
 
 const REG = process.env.REGISTRY_ACCOUNT ?? "endorse-reg.testnet";
 const USDC = process.env.USDC_ACCOUNT ?? "endorse-usdc.testnet";
-const STUDIO = "endorse-studio.testnet", ACME = "endorse-acme.testnet", FUND = "endorse-fund.testnet";
+const STUDIO = process.env.PERSONA_STUDIO ?? "endorse-studio.testnet", ACME = process.env.PERSONA_ACME ?? "endorse-acme.testnet", FUND = process.env.PERSONA_FUND ?? "endorse-fund.testnet";
 const usd = (n) => String(BigInt(Math.round(n * 1e6)));
 const bal = async (a) => Number(await view(USDC, "ft_balance_of", { account_id: a })) / 1e6;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

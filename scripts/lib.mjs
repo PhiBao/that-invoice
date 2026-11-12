@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
-import { Account, JsonRpcProvider, KeyPairSigner } from "near-api-js";
+import { Account, JsonRpcProvider, KeyPairSigner, KeyPair } from "near-api-js";
 
 export const NETWORK = process.env.NEAR_NETWORK ?? "testnet";
 export const RPC = process.env.NEAR_RPC ?? (NETWORK === "mainnet" ? "https://free.rpc.fastnear.com" : "https://test.rpc.fastnear.com");
@@ -46,3 +46,29 @@ export async function call(signer, contractId, methodName, args = {}, { deposit 
   return res;
 }
 export const wasmPath = (name) => path.join(root, "target", "wasm", `${name}.wasm`);
+
+/** Create a testnet account through the public faucet helper; stores its key in ~/.near-credentials. */
+export async function createFaucetAccount(id) {
+  if ((await balance(id)) !== null) return false;
+  const kp = KeyPair.fromRandom("ed25519");
+  const res = await fetch("https://helper.nearprotocol.com/account", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ newAccountId: id, newAccountPublicKey: kp.getPublicKey().toString() }),
+  });
+  if (!res.ok) throw new Error(`faucet refused ${id}: ${res.status} ${await res.text()}`);
+  const dir = path.join(os.homedir(), ".near-credentials", NETWORK);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, `${id}.json`), JSON.stringify({ account_id: id, public_key: kp.getPublicKey().toString(), private_key: kp.toString() }), { mode: 0o600 });
+  return true;
+}
+
+/** Create `id` as a sub-account of `funder` (a funded testnet account whose key is in ~/.near-credentials). */
+export async function createSubAccount(funder, id, nearToTransfer) {
+  if ((await balance(id)) !== null) return false;
+  const kp = KeyPair.fromRandom("ed25519");
+  await account(funder).createSubAccount({ accountOrPrefix: id, publicKey: kp.getPublicKey().toString(), nearToTransfer });
+  const dir = path.join(os.homedir(), ".near-credentials", NETWORK);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, `${id}.json`), JSON.stringify({ account_id: id, public_key: kp.getPublicKey().toString(), private_key: kp.toString() }), { mode: 0o600 });
+  return true;
+}

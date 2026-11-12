@@ -1,0 +1,14 @@
+{
+  "network": "testnet",
+  "registry": "endorse-v1.testnet",
+  "usdc": "endorse-usdc.testnet",
+  "invoiceHash": "EGwUfUK3o1Uqp7QWC4pXenmz89idUbsnZLQj7XHXh9BV",
+  "invoiceHashNote": "Code hash of the invoice-account contract, published once as a NEP-591 global contract by endorse-pub2.testnet. Any registry can reference it by hash.",
+  "publisher": "endorse-pub2.testnet",
+  "globalFt": "ft.globals.primitives.testnet",
+  "personas": {
+    "studio": "endorse-studio.testnet",
+    "acme": "endorse-acme.testnet",
+    "fund": "endorse-fund.testnet"
+  }
+}
