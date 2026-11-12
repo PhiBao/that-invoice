@@ -42,17 +42,21 @@ export default function Home() {
           <p className="eyebrow" style={{ marginBottom: 18 }}>Receivables on NEAR · built for NEAR HACKATHON</p>
           <h1 className="h1">The invoice <em>is</em> the account.</h1>
           <p className="lede" style={{ marginTop: 22 }}>
-            That Invoice gives every invoice its own NEAR address. The client pays that address from any chain.
-            The business can sell the invoice for cash today, and whoever owns it when it is paid collects.
-            The payment address never changes, so nothing has to be forwarded and nothing can be sold twice.
+            When the auto-parts supplier First Brands collapsed owing about $2.3 billion in factoring alone,
+            investigators asked whether the same invoices had been financed more than once. Here an invoice can
+            exist once, and the money it earns goes to whoever owns it when it is paid.
+          </p>
+          <p className="lede" style={{ marginTop: 14, fontSize: 16 }}>
+            Every invoice is its own NEAR account. Sell it for cash today, and the client keeps paying the same
+            address. Nothing is forwarded, and the old owner cannot redirect it.
           </p>
           <div className="cta">
-            <Link href="/demo" className="btn stamp">Run the 90-second demo</Link>
-            <Link href="/ledger" className="btn ghost">Open the ledger</Link>
+            <Link href="/demo" className="btn stamp">Watch it run, live</Link>
+            <Link href="/desk" className="btn ghost">Try it with your own account</Link>
           </div>
           <p className="hero-note">
-            Every step in the demo is a real transaction on NEAR testnet, with an explorer link. The only
-            simulated thing is the money: invoices settle in a test USDC token.
+            Every step is a real transaction on NEAR testnet with an explorer link. The only simulated thing is
+            the money: invoices settle in a test USDC token.
           </p>
         </div>
         <InvoiceDoc invoice={showcase} />
@@ -64,9 +68,9 @@ export default function Home() {
           <span className="eyebrow">three steps</span>
         </div>
         <div className="steps3">
-          <div><div className="n">1</div><h3>Issue</h3><p>The registry creates <span className="mono">inv-N.registry</span> as a real NEAR account and mints the invoice as an NFT. The client confirms it on-chain, or a DAO confirms it with a proposal.</p></div>
+          <div><div className="n">1</div><h3>Issue</h3><p>The registry creates <span className="mono">inv-N.registry</span> as a real NEAR account and mints the invoice as an NFT. The client confirms it on-chain. When the client is a DAO, that means a proposal that its council approves.</p></div>
           <div><div className="n">2</div><h3>Sell</h3><p>List the confirmed invoice at a discount. A buyer pays, and in one receipt the NFT moves and the seller is paid. The pay-to address stays put.</p></div>
-          <div><div className="n">3</div><h3>Get paid</h3><p>The client pays the invoice account from any chain through NEAR Intents. The registry marks it paid and the <em>current</em> owner collects.</p></div>
+          <div><div className="n">3</div><h3>Get paid</h3><p>The client pays the invoice account in USDC. The server notices, the registry marks it paid, and the <em>current</em> owner collects. On mainnet, NEAR Intents routes USDC from other chains into the account.</p></div>
         </div>
       </section>
 

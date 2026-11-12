@@ -5,6 +5,7 @@ import QRCode from "qrcode";
 import type { Endorsement, Invoice } from "@/lib/types";
 import { date, short, time, usd } from "@/lib/format";
 import { StatusStamp } from "./StatusStamp";
+import { useLedger } from "@/lib/store";
 
 function verb(e: Endorsement): { text: string; who: string } {
   const amt = e.amount ? usd(e.amount) : "";
@@ -38,6 +39,9 @@ export function InvoiceDoc({
   const flipped = controlled ?? local;
   const setFlipped = (f: boolean) => (onFlip ? onFlip(f) : setLocal(f));
   const [qr, setQr] = useState("");
+  const { guest } = useLedger();
+  // Guest accounts are 64-character hex; show them as "You" on the viewer's own screen.
+  const nm = (a: string, n = 26) => (guest && a === guest.account ? `You (${a.slice(0, 6)}…${a.slice(-4)})` : short(a, n));
 
   useEffect(() => {
     QRCode.toString(invoice.id, { type: "svg", margin: 0, color: { dark: "#15120d", light: "#ffffff" } }).then(setQr).catch(() => setQr(""));
@@ -64,15 +68,15 @@ export function InvoiceDoc({
             <small>USDC</small>
           </div>
           <dl className="doc-grid">
-            <div><dt>From</dt><dd className="mono">{short(invoice.issuer, 26)}</dd></div>
-            <div><dt>Bill to</dt><dd className="mono">{short(invoice.debtor, 26)}</dd></div>
+            <div><dt>From</dt><dd className="mono">{nm(invoice.issuer)}</dd></div>
+            <div><dt>Bill to</dt><dd className="mono">{nm(invoice.debtor)}</dd></div>
             <div><dt>Due</dt><dd className="mono">{date(invoice.due_ms)}</dd></div>
-            <div><dt>{invoice.status === "Claimed" ? "Collected by" : invoice.status === "Paid" ? "Held at this address" : "Pay to the order of"}</dt><dd className="mono">{invoice.status === "Paid" && held !== undefined ? usd(held) : short(invoice.owner, 26)}</dd></div>
+            <div><dt>{invoice.status === "Claimed" ? "Collected by" : invoice.status === "Paid" ? "Held at this address" : "Pay to the order of"}</dt><dd className="mono">{invoice.status === "Paid" && held !== undefined ? usd(held) : nm(invoice.owner)}</dd></div>
           </dl>
           <div className="payto">
             <div className="qr" aria-hidden dangerouslySetInnerHTML={{ __html: qr }} />
             <div>
-              <span className="eyebrow">Pay this NEAR account, from any chain</span>
+              <span className="eyebrow">Pay this NEAR account</span>
               <div className="addr">{invoice.id}</div>
             </div>
           </div>
@@ -89,7 +93,7 @@ export function InvoiceDoc({
           </div>
           <div style={{ marginTop: 16, borderBottom: "1px solid var(--ink)", paddingBottom: 10 }}>
             <span className="eyebrow">Pay to the order of</span>
-            <div className="serif" style={{ fontSize: 24, fontStyle: "italic", lineHeight: 1.15, wordBreak: "break-all" }}>{invoice.owner}</div>
+            <div className="serif" style={{ fontSize: guest && invoice.owner === guest.account ? 30 : 24, fontStyle: "italic", lineHeight: 1.15, wordBreak: "break-all" }}>{guest && invoice.owner === guest.account ? <>You <span className="mono" style={{ fontSize: 13, fontStyle: "normal" }}>{invoice.owner.slice(0, 8)}…{invoice.owner.slice(-6)}</span></> : invoice.owner}</div>
           </div>
           <ol className="endorse-list">
             {invoice.log.map((e, i) => {

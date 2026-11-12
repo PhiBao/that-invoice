@@ -14,6 +14,9 @@ use crate::app::{persona_account, run_action, Shared};
 const TARGET_FOR_SALE: usize = 4;
 const MIN_FOR_SALE: usize = 3;
 const CHECK_EVERY: Duration = Duration::from_secs(30);
+/// Each new invoice costs the issuer about 0.11 NEAR, so cap the pace and stop before an issuer runs dry.
+const MAX_PER_HOUR: usize = 24;
+const MIN_ISSUER_NEAR: u128 = 300_000_000_000_000_000_000_000; // 0.3 NEAR
 
 /// (issuer account, issuer label, debtor persona-or-account, face USD, ask USD, days to due, number prefix)
 const MENU: &[(&str, &str, &str, u64, u64, i64, &str)] = &[
@@ -34,6 +37,7 @@ pub async fn run(st: Shared) {
     }
     let mut cursor = 0usize;
     let mut last_fail: Option<Instant> = None;
+    let mut made: std::collections::VecDeque<Instant> = std::collections::VecDeque::new();
     tokio::time::sleep(Duration::from_secs(20)).await;
     loop {
         tokio::time::sleep(CHECK_EVERY).await;
@@ -53,11 +57,30 @@ pub async fn run(st: Shared) {
         if for_sale >= MIN_FOR_SALE {
             continue;
         }
+        while made.front().is_some_and(|t| t.elapsed() > Duration::from_secs(3600)) {
+            made.pop_front();
+        }
+        if made.len() >= MAX_PER_HOUR {
+            continue;
+        }
         let need = TARGET_FOR_SALE - for_sale;
         tracing::info!(for_sale, need, "restocking the Buyer desk");
         for _ in 0..need {
-            let entry = MENU[cursor % MENU.len()];
+            // skip issuers that are low on NEAR rather than letting them fail mid-way
+            let mut entry = MENU[cursor % MENU.len()];
             cursor += 1;
+            for _ in 0..MENU.len() {
+                let funded = match entry.0.parse::<AccountId>() {
+                    Ok(a) => st.chain.near_balance(&a).await >= MIN_ISSUER_NEAR,
+                    Err(_) => false,
+                };
+                if funded {
+                    break;
+                }
+                entry = MENU[cursor % MENU.len()];
+                cursor += 1;
+            }
+            made.push_back(Instant::now());
             if let Err(e) = list_one(&st, &entry).await {
                 tracing::warn!("market maker failed: {e:#}");
                 last_fail = Some(Instant::now());

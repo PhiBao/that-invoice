@@ -1,8 +1,10 @@
 # That Invoice
 
+[![CI](https://github.com/PhiBao/that-invoice/actions/workflows/ci.yml/badge.svg)](https://github.com/PhiBao/that-invoice/actions/workflows/ci.yml)
+
 **The invoice is the account.**
 
-That Invoice gives every invoice its own NEAR account. The client pays that account from any chain. The business can sell the invoice for cash today, and whoever owns it when it is paid collects. The payment address never changes, so nothing has to be forwarded and nothing can be sold twice.
+That Invoice gives every invoice its own NEAR account. The business can sell the invoice for cash today, and whoever owns it when it is paid collects. The client keeps paying the same address, so nothing has to be forwarded and nothing can be sold twice.
 
 Built for **NEAR HACKATHON 2026**. Primary track: **NFTs That Do Something** (`nfts`). Also fits **Real-World Money** (`realworld`) and **Unstoppable DeFi** (`defi`).
 

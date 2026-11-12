@@ -70,7 +70,7 @@ export default function InvoicePage({ params }: { params: Promise<{ id: string }
             <dt>Money held at that address</dt><dd>{usd(detail.held)}</dd>
             <dt>Issuer</dt><dd>{inv.issuer}</dd>
             <dt>Billed to</dt><dd><Link href={`/debtor/${inv.debtor}`}>{inv.debtor}</Link></dd>
-            <dt>Current owner</dt><dd>{inv.owner}</dd>
+            <dt>Current owner</dt><dd>{persona?.key === "guest" && inv.owner === persona.account ? `You (${inv.owner.slice(0, 8)}…${inv.owner.slice(-6)})` : inv.owner}</dd>
             <dt>Document hash</dt><dd>{inv.doc_hash ? <a href={`/api/docs/${inv.doc_hash}`} target="_blank" rel="noreferrer">{short(inv.doc_hash, 28)}</a> : "none attached"}</dd>
           </dl>
         </div>

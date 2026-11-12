@@ -24,7 +24,7 @@ export function QuotePanel({ amountMicro }: { amountMicro: string }) {
   return (
     <section className="panel">
       <header>
-        <b>Pay from any chain</b>
+        <b>Paying from another chain</b>
         <span className="eyebrow">NEAR Intents · live dry run</span>
       </header>
       <div className="body">
@@ -33,7 +33,7 @@ export function QuotePanel({ amountMicro }: { amountMicro: string }) {
         {data && (
           <>
             <p style={{ margin: "0 0 8px", fontSize: 13.5, color: "var(--ink-2)" }}>
-              To deliver exactly this invoice in USDC on NEAR, a client sends:
+              On mainnet, NEAR Intents would deliver exactly this much USDC to the invoice account. A client sends:
             </p>
             {data.quotes.map((q) => (
               <div key={q.chain} className="quote-row">

@@ -14,7 +14,7 @@ const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono", dis
 export const metadata: Metadata = {
   title: "That Invoice: the invoice is the account",
   description:
-    "That Invoice turns an invoice into a NEAR account. The client pays it from any chain, the issuer can sell it for cash today, and whoever owns it when it is paid collects.",
+    "That Invoice turns an invoice into a NEAR account. The business can sell it for cash today, the client keeps paying the same address, and whoever owns it when it is paid collects.",
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
   openGraph: { title: "That Invoice", description: "The invoice is the account.", type: "website" },
 };
