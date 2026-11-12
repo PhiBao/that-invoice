@@ -14,7 +14,11 @@ Built for **NEAR HACKATHON 2026**. Primary track: **NFTs That Do Something** (`n
 
 > The demo server sleeps when idle to save cost. The first visit can take about 6 seconds to wake it; the page shows a "waking the demo server" banner meanwhile.
 
-![The invoice document](docs/screenshots/invoice-back.png)
+![The back of a settled invoice: every endorsement](docs/screenshots/invoice-back.png)
+
+| The Buyer desk | A guest account that bought and collected |
+|---|---|
+| ![Buyer desk](docs/screenshots/desk.png) | ![Guest account](docs/screenshots/guest.png) |
 
 ---
 
