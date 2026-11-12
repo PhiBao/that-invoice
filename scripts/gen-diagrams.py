@@ -35,16 +35,16 @@ def text(x, y, s, size=13, fill=INK, font=SANS, anchor="start", weight="400", st
 def lifecycle():
     lanes = [
         ("Studio Nine", "issuer", 120),
-        ("Acme DAO", "client", 330),
+        ("Acme DAO", "Sputnik DAO", 330),
         ("Registry", "contract", 560),
         ("inv-N account", "global contract", 790),
         ("Northfield Fund", "investor", 1010),
         ("USDC", "NEP-141", 1220),
     ]
-    W, H = 1340, 960
+    W, H = 1340, 1010
     s = head(W, H, "Invoice lifecycle", "Sequence of an invoice being issued, confirmed, sold, paid and collected.")
     s += text(40, 52, "One invoice, from issue to collection", 30, INK, SERIF, weight="500")
-    s += text(40, 78, "Every arrow is a real call on NEAR. Red arrows are what the contract refuses.", 13.5, INK3)
+    s += text(40, 78, "Every arrow is a real call on NEAR. Red dashed arrows are attacks the contract blocks.", 13.5, INK3)
     top = 118
     lane = {}
     for name, sub, x in lanes:
@@ -79,23 +79,24 @@ def lifecycle():
         y += 40
         return out
 
-    s += msg("Studio Nine", "Registry", "issue(acme, 0042, $1,200)", "attach 0.1 NEAR")
+    s += msg("Studio Nine", "Registry", "issue(acme-dao, 0042, $1,200)", "attach 0.1 NEAR")
     s += msg("Registry", "inv-N account", "create_account + use_global_contract + new()", None)
     s += msg("Registry", "USDC", "storage_deposit(inv-N)", "so the account can hold USDC")
-    s += note(lane["inv-N account"], "inv-3.registry now exists", 210)
-    s += msg("Studio Nine", "Registry", "issue(acme, 0042, $1,200) again", None, STAMP, "ar", True)
-    s += text(lane["Registry"] + 14, y - 22, "refused: already exists as inv-3", 12, STAMP, SANS, "start", "600")
+    s += note(lane["inv-N account"], "inv-3 now exists", 190)
+    s += msg("Studio Nine", "Registry", "issue(acme-dao, 0042, $1,200) again", None, STAMP, "ar", True)
+    s += text(lane["Registry"] + 14, y - 22, "BLOCKED: already exists as inv-3", 12, STAMP, SANS, "start", "600")
     y += 22
-    s += msg("Acme DAO", "Registry", "confirm(inv-3)", "only the debtor can")
+    s += msg("Acme DAO", "Registry", "confirm(inv-3)  [DAO proposal, council approves]", "the DAO account is the caller")
     s += msg("Studio Nine", "Registry", "list(inv-3, $1,176)", "locks the invoice")
     s += msg("Northfield Fund", "USDC", "ft_transfer_call(registry, $1,176, {buy: inv-3})", None)
     s += msg("USDC", "Registry", "ft_on_transfer", "owner := Fund, then pay Studio, one receipt")
     s += msg("Registry", "USDC", "ft_transfer($1,176 → Studio Nine)", None, GREEN, "ag")
     s += msg("Studio Nine", "Registry", "list(inv-3, …) again", None, STAMP, "ar", True)
-    s += text(lane["Registry"] + 14, y - 22, "refused: only the owner can list", 12, STAMP, SANS, "start", "600")
+    s += text(lane["Registry"] + 14, y - 22, "BLOCKED: only the owner can list", 12, STAMP, SANS, "start", "600")
     y += 22
-    s += msg("Acme DAO", "USDC", "ft_transfer(inv-3, $1,200)", "from any chain via NEAR Intents on mainnet", GREEN, "ag")
-    s += msg("Northfield Fund", "Registry", "sync(inv-3)", "reads ft_balance_of(inv-3); status := Paid")
+    s += msg("Acme DAO", "USDC", "ft_transfer(inv-3, $1,200)  [DAO proposal]", "paid from the treasury", GREEN, "ag")
+    s += note(lane["Registry"], "a server keeper calls sync(inv-3)", 250)
+    s += msg("Registry", "USDC", "ft_balance_of(inv-3) ≥ $1,200", "status := Paid")
     s += msg("Northfield Fund", "Registry", "claim(inv-3)", "owner only; token locked as Claiming")
     s += msg("Registry", "inv-N account", "release(Fund, $1,200)", None)
     s += msg("inv-N account", "USDC", "ft_transfer(Fund, $1,200)", "status := Claimed", GREEN, "ag")
@@ -154,7 +155,7 @@ def trust():
         ("Selling twice", "issue() refuses a repeated (issuer, debtor, number). After a sale the old owner fails the owner check."),
         ("Paying the wrong person", "The payee is read at claim time, so a sale moves the right to the money without moving the address."),
         ("Racing a sale against a payout", "Listed and Claiming lock the token. A payout in flight blocks transfer, listing and a second claim."),
-        ("What it does not rule out", "The registry account key can still redeploy the registry. The invoice contract is immutable; the registry is not yet locked or DAO-controlled."),
+        ("Nobody can change the rules", "The invoice contract is immutable by hash, and the registry's access keys are deleted. Anyone can verify both with scripts/verify-deployment.mjs."),
     ]
     for i, (h, b) in enumerate(items):
         x = 40 + i * 300
@@ -185,7 +186,7 @@ def architecture():
         return o
 
     s += box(40, 120, 270, 190, "Browser", ["Next.js 16 · React 19", "invoice document with a back side", "ledger, buyer desk, live demo", "SSE keeps it in sync", "persona switcher"], tag="TYPESCRIPT")
-    s += box(380, 120, 330, 190, "Rust API (Axum, Tokio)", ["read model: polls registry, caches, SSE", "act: signs txs for demo personas", "demo: a server-side job; clients replay it", "quote: 1Click dry-run proxy", "docs: SHA-256 content store", "rate limits; keys only in env/secrets"], tag="RUST")
+    s += box(380, 120, 330, 190, "Rust API (Axum, Tokio)", ["read model: polls registry, caches, SSE", "act: signs txs for demo personas", "demo + keeper + market maker", "quote: 1Click dry-run proxy", "docs: SHA-256 content store", "rate limits; keys only in env/secrets"], tag="RUST")
     s += box(780, 120, 460, 190, "NEAR testnet", ["registry.testnet   NEP-171 + market + records", "inv-N.registry     one account per invoice,", "                   shared immutable global contract", "usdc.testnet       NEP-141 (demo USDC)", "public RPC (fastnear)"], tag="CONTRACTS")
     s += box(380, 380, 330, 130, "NEAR Intents · 1Click API", ["dry quotes: what a Base, Arbitrum,", "Ethereum or Solana payer would send", "mainnet liquidity; no testnet exists"], tag="EXTERNAL")
     s += box(40, 380, 270, 130, "Document store", ["invoice line items stay off-chain", "only the hash is on-chain", "GET re-verifies the hash"], tag="FILES")
