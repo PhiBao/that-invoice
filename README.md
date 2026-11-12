@@ -8,6 +8,10 @@ Built for **NEAR HACKATHON 2026**. Primary track: **NFTs That Do Something** (`n
 
 > Everything runs on **NEAR testnet**. Invoices settle in a **demo USDC** token. The pay-from-any-chain quotes are live dry runs against NEAR Intents mainnet liquidity (Intents has no testnet). See [What is real, what is not](#what-is-real-what-is-not).
 
+**Live demo:** https://that-invoice.fly.dev (custom domain: https://thatinvoice.uconfidant.tech once DNS propagates) · **Repo:** https://github.com/PhiBao/that-invoice
+
+> The demo server sleeps when idle to save cost. The first visit can take about 6 seconds to wake it; the page shows a "waking the demo server" banner meanwhile.
+
 ![The invoice document](docs/screenshots/invoice-back.png)
 
 ---
@@ -16,7 +20,7 @@ Built for **NEAR HACKATHON 2026**. Primary track: **NFTs That Do Something** (`n
 
 You do not need a wallet or any NEAR. The server signs for three demo personas (testnet keys, test USDC only).
 
-1. Start the stack ([Run it](#run-it)) and open **http://localhost:3000/demo**.
+1. Open **https://that-invoice.fly.dev/demo** (or start the stack yourself, see [Run it](#run-it), and open `http://localhost:3000/demo`).
 2. Press **Run the demo**. After about 45 seconds you see ten steps, each with a transaction link. **Expected:** nine steps pass, and two of them show a red **Refused by the contract** note (the same invoice issued twice, and the old owner trying to sell again).
 3. Open the invoice from the green note. Click **Endorsements ↻**. **Expected:** the back of the invoice lists *Issued, Confirmed as owed, Offered, Sold, Paid in full, Collected*, ending with `Pay to the order of endorse-fund.testnet`.
 4. Open the **Buyer desk**, then run the demo again and watch the ledger update live (server-sent events, no refresh).
@@ -117,6 +121,8 @@ deployment.json             what is deployed on testnet
 | Invoice contract (global, by hash) | `EGwUfUK3o1Uqp7QWC4pXenmz89idUbsnZLQj7XHXh9BV`, published by `endorse-pub2.testnet` |
 | Personas | `endorse-studio.testnet`, `endorse-acme.testnet`, `endorse-fund.testnet` |
 
+The `endorse-*` account names come from the project's working title. NEAR accounts cannot be renamed, so the testnet deployment keeps them.
+
 ---
 
 ## Run it
@@ -152,6 +158,18 @@ set -a; . ./.env; set +a
 cargo run -p that-invoice-api --release
 pnpm --dir apps/web build && pnpm --dir apps/web start
 ```
+
+### Deploying to Fly.io
+
+The repo ships a `Dockerfile` (Rust API plus Next.js in one image) and a `fly.toml` that scales to zero.
+
+```bash
+fly apps create <name> && fly volumes create that_invoice_data --size 1
+fly secrets set NEAR_KEYS='{"<persona>.testnet":"ed25519:...", "<token-account>.testnet":"ed25519:..."}'
+fly deploy
+```
+
+The container starts the API first and opens the public port only once the API answers `/healthz`, so a woken machine never serves a half-started app.
 
 ### Tests and checks
 
