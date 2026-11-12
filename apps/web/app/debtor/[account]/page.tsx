@@ -3,7 +3,7 @@
 import { use, useEffect, useState } from "react";
 import { LedgerTable } from "@/components/LedgerTable";
 import type { DebtorRecord, Invoice } from "@/lib/types";
-import { usd } from "@/lib/format";
+import { friendly, usd } from "@/lib/format";
 import { useLedger } from "@/lib/store";
 
 export default function DebtorPage({ params }: { params: Promise<{ account: string }> }) {
@@ -22,7 +22,8 @@ export default function DebtorPage({ params }: { params: Promise<{ account: stri
   return (
     <div className="wrap page">
       <p className="eyebrow">Client record</p>
-      <h1 className="h2 mono" style={{ fontSize: 34, marginBottom: 24, wordBreak: "break-all" }}>{account}</h1>
+      <h1 className="h2" style={{ fontSize: 40, marginBottom: friendly(account) ? 4 : 24, wordBreak: "break-all" }}>{friendly(account) ?? account}</h1>
+      {friendly(account) && <p className="mono muted" style={{ marginBottom: 24, fontSize: 13, wordBreak: "break-all" }}>{account}</p>}
       <div className="facts" style={{ marginBottom: 40 }}>
         <div className="fact"><span className="eyebrow">Confirmed invoices</span><b className="mono">{r?.confirmed ?? "–"}</b></div>
         <div className="fact"><span className="eyebrow">Paid on time</span><b className="mono">{r ? `${r.paid_on_time} of ${r.paid}` : "–"}</b></div>

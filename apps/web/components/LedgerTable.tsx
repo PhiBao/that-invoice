@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import type { Invoice } from "@/lib/types";
-import { date, daysLate, isOverdue, short, usd } from "@/lib/format";
+import { date, daysLate, friendly, isOverdue, short, usd } from "@/lib/format";
 import { StatusStamp } from "./StatusStamp";
 
 export function LedgerTable({ invoices, limit }: { invoices: Invoice[]; limit?: number }) {
@@ -27,10 +27,10 @@ export function LedgerTable({ invoices, limit }: { invoices: Invoice[]; limit?: 
                 <Link className="id" href={`/i/${i.id}`}>{i.number}</Link>
                 <div className="sub">{i.id}</div>
               </td>
-              <td className="mono" style={{ fontSize: 13 }}>{short(i.debtor, 24)}</td>
-              <td className="mono" style={{ fontSize: 13 }}>
-                {short(i.owner, 24)}
-                {i.owner !== i.issuer && <div className="sub">sold by {short(i.issuer, 20)}</div>}
+              <td style={{ fontSize: 14 }}>{friendly(i.debtor) ?? <span className="mono" style={{ fontSize: 13 }}>{short(i.debtor, 24)}</span>}{friendly(i.debtor) && <div className="sub">{short(i.debtor, 30)}</div>}</td>
+              <td style={{ fontSize: 14 }}>
+                {friendly(i.owner) ?? <span className="mono" style={{ fontSize: 13 }}>{short(i.owner, 24)}</span>}
+                {i.owner !== i.issuer && <div className="sub">sold by {friendly(i.issuer) ?? short(i.issuer, 20)}</div>}
               </td>
               <td className="num">{usd(i.amount)}</td>
               <td className="mono" style={{ fontSize: 13 }}>{date(i.due_ms)}{isOverdue(i) && <div className="sub" style={{ color: "var(--stamp-ink)" }}>{daysLate(i.due_ms)}d late</div>}</td>

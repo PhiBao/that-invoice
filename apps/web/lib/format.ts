@@ -85,3 +85,22 @@ export function daysLate(ms: string | number): number {
 export function isDemoRun(i: { number: string }): boolean {
   return /^(DEMO|E2E|DAO)-/i.test(i.number);
 }
+
+const KNOWN: Record<string, string> = {
+  "endorse-studio.testnet": "Studio Nine",
+  "endorse-fund.testnet": "Northfield Fund",
+  "thatinvoice-acme.sputnikv2.testnet": "Acme DAO",
+  "endorse-acme.testnet": "Acme (treasurer)",
+  "kestrel.endorse-studio.testnet": "Kestrel Audit",
+  "loomlabs.endorse-studio.testnet": "Loom Labs",
+  "northwind.endorse-studio.testnet": "Northwind",
+};
+
+/** A human name for the accounts the demo knows, or null. */
+export function friendly(account: string): string | null {
+  return KNOWN[account] ?? null;
+}
+/** "Acme DAO" for known accounts, otherwise the shortened account id. */
+export function who(account: string, max = 22): string {
+  return friendly(account) ?? short(account, max);
+}

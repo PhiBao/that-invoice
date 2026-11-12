@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useLedger } from "@/lib/store";
-import { apr, date, daysLate, daysTo, discountPct, isOverdue, short, usd } from "@/lib/format";
+import { apr, date, daysLate, daysTo, discountPct, friendly, isOverdue, short, usd } from "@/lib/format";
 
 export default function DeskPage() {
   const { state, persona, act, busy } = useLedger();
@@ -38,9 +38,9 @@ export default function DeskPage() {
                 const own = persona?.account === i.owner;
                 return (
                   <tr key={i.id} className="row">
-                    <td><Link className="id" href={`/i/${i.id}`}>{i.number}</Link><div className="sub">from {short(i.issuer, 22)}</div></td>
+                    <td><Link className="id" href={`/i/${i.id}`}>{i.number}</Link><div className="sub">from {friendly(i.issuer) ?? short(i.issuer, 22)}</div></td>
                     <td className="mono" style={{ fontSize: 13 }}>
-                      <Link href={`/debtor/${i.debtor}`}>{short(i.debtor, 22)}</Link>
+                      <Link href={`/debtor/${i.debtor}`}>{friendly(i.debtor) ?? short(i.debtor, 22)}</Link>
                       <div className="sub">{rec ? `${rec.paid_on_time}/${rec.paid} paid on time · ${rec.confirmed} confirmed` : "no history"}</div>
                     </td>
                     <td className="num">{usd(i.amount)}</td>

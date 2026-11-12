@@ -93,7 +93,7 @@ pub async fn run(st: Shared) {
 }
 
 async fn list_one(st: &Shared, m: &(&str, &str, &str, u64, u64, i64, &str)) -> Result<()> {
-    let (issuer_id, _label, debtor_key, face, ask, days, prefix) = *m;
+    let (issuer_id, _label, debtor_key, face, _ask, days, prefix) = *m;
     let issuer: AccountId = issuer_id.parse()?;
     let reg = st.chain.registry.clone();
     // Distinct invoice numbers: prefix-YYMM-NNN from the registry's invoice count.
@@ -103,6 +103,14 @@ async fn list_one(st: &Shared, m: &(&str, &str, &str, u64, u64, i64, &str)) -> R
         "acme" => persona_account(st, "acme")?.to_string(),
         other => format!("{other}.endorse-studio.testnet"),
     };
+    // Vary size, discount and term a little so repeated listings are not clones of each other.
+    let jitter = |salt: u64, span: u64| -> u64 { (n.wrapping_mul(2654435761).wrapping_add(salt.wrapping_mul(40503)) >> 7) % span };
+    let past_due = days < 0;
+    let face = if past_due { face } else { face + jitter(1, 9) * (face / 40).max(10) - (face / 10) };
+    let face = (face / 5) * 5; // round to $5
+    let discount_bp = if past_due { 1000 } else { 90 + jitter(2, 330) }; // 0.9% to 4.2%; deeper when overdue
+    let ask = face - face * discount_bp / 10_000;
+    let days = if past_due { days } else { (days + jitter(3, 15) as i64 - 4).max(7) };
     let amount = (face as u128) * 1_000_000;
 
     let out = st
