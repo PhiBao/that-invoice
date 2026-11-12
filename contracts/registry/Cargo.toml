@@ -1,0 +1,15 @@
+[package]
+name = "registry"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Endorse registry: invoices as NEP-171 tokens that are also NEAR accounts, plus the market that sells them."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+near-sdk = { workspace = true }
+
+[dev-dependencies]
+near-sdk = { workspace = true, features = ["unit-testing"] }

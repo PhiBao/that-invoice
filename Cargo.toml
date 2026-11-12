@@ -1,0 +1,14 @@
+[workspace]
+resolver = "2"
+members = ["contracts/registry", "contracts/invoice-account"]
+
+[workspace.dependencies]
+near-sdk = { version = "5.30", default-features = false, features = ["global-contracts"] }
+
+[profile.release]
+codegen-units = 1
+opt-level = "z"
+lto = true
+debug = false
+panic = "abort"
+overflow-checks = true
