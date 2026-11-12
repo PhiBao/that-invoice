@@ -809,30 +809,39 @@ async fn post_guest(
         ));
     }
     let token = st.chain.token.clone();
-    // 1. gas money (this also creates the implicit account)
-    if near_have < GUEST_MIN_NEAR {
-        st.chain.send_near(&funder, &acct, GUEST_NEAR).await?;
-    }
-    // 2. register on the token and 3. send demo USDC
-    let reg: Value = st.chain.view(&token, "storage_balance_of", json!({ "account_id": acct })).await.unwrap_or(Value::Null);
-    if reg.is_null() {
-        let out = st
-            .chain
-            .call(&token, &token, "storage_deposit", json!({ "account_id": acct, "registration_only": true }), NearToken::from_millinear(2), 30)
-            .await?;
-        if !out.ok {
-            return Err(ApiError(StatusCode::BAD_GATEWAY, out.error.unwrap_or_default()));
+    // The NEAR transfer (from the funder) and the token set-up (from the token account) use different keys, so they run in parallel.
+    let gas_money = async {
+        if near_have < GUEST_MIN_NEAR {
+            st.chain.send_near(&funder, &acct, GUEST_NEAR).await.map(|_| ())
+        } else {
+            Ok(())
         }
-    }
-    if usdc_have < 1_000_000_000 {
-        let out = st
-            .chain
-            .call(&token, &token, "ft_transfer", json!({ "receiver_id": acct, "amount": micro(GUEST_USDC) }), NearToken::from_yoctonear(1), 30)
-            .await?;
-        if !out.ok {
-            return Err(ApiError(StatusCode::BAD_GATEWAY, out.error.unwrap_or_default()));
+    };
+    let token_setup = async {
+        let reg: Value = st.chain.view(&token, "storage_balance_of", json!({ "account_id": acct })).await.unwrap_or(Value::Null);
+        if reg.is_null() {
+            let out = st
+                .chain
+                .call(&token, &token, "storage_deposit", json!({ "account_id": acct, "registration_only": true }), NearToken::from_millinear(2), 30)
+                .await?;
+            if !out.ok {
+                anyhow::bail!(out.error.unwrap_or_default());
+            }
         }
-    }
+        if usdc_have < 1_000_000_000 {
+            let out = st
+                .chain
+                .call(&token, &token, "ft_transfer", json!({ "receiver_id": acct, "amount": micro(GUEST_USDC) }), NearToken::from_yoctonear(1), 30)
+                .await?;
+            if !out.ok {
+                anyhow::bail!(out.error.unwrap_or_default());
+            }
+        }
+        Ok::<(), anyhow::Error>(())
+    };
+    let (a1, a2) = tokio::join!(gas_money, token_setup);
+    a1.map_err(|e| ApiError(StatusCode::BAD_GATEWAY, format!("{e:#}")))?;
+    a2.map_err(|e| ApiError(StatusCode::BAD_GATEWAY, format!("{e:#}")))?;
     let usdc = st.chain.usdc_balance(&acct).await.unwrap_or(0);
     Ok(Json(json!({ "account_id": account, "funded": true, "usdc": micro(usdc), "near": GUEST_NEAR.as_yoctonear().to_string() })))
 }

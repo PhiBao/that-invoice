@@ -17,8 +17,9 @@ pub struct Chain {
     pub token: AccountId,
     signers: HashMap<AccountId, Arc<Signer>>,
     pub explorer: String,
-    /// One transaction at a time per server: keeps access-key nonces sane and caps abuse.
-    pub tx_lock: tokio::sync::Mutex<()>,
+    /// One in-flight transaction per signing key keeps that key's nonces ordered. Different keys run in parallel,
+    /// so background work (market maker, keeper) never makes a visitor's action wait on an unrelated account.
+    tx_locks: std::sync::Mutex<HashMap<AccountId, Arc<tokio::sync::Mutex<()>>>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -72,8 +73,12 @@ impl Chain {
             token: cfg.token.parse()?,
             signers,
             explorer: cfg.explorer.clone(),
-            tx_lock: tokio::sync::Mutex::new(()),
+            tx_locks: std::sync::Mutex::new(HashMap::new()),
         })
+    }
+
+    fn lock_for(&self, who: &AccountId) -> Arc<tokio::sync::Mutex<()>> {
+        self.tx_locks.lock().unwrap().entry(who.clone()).or_default().clone()
     }
 
     pub fn can_sign(&self, who: &AccountId) -> bool {
@@ -113,7 +118,8 @@ impl Chain {
     /// Send native NEAR from a signer we hold. Creates implicit accounts on first transfer.
     pub async fn send_near(&self, from: &AccountId, to: &AccountId, amount: NearToken) -> Result<String> {
         let key = self.signers.get(from).ok_or_else(|| anyhow!("no key configured for {from}"))?.clone();
-        let _guard = self.tx_lock.lock().await;
+        let lock = self.lock_for(from);
+        let _guard = lock.lock().await;
         let res = near_api::Tokens::account(from.clone())
             .send_to(to.clone())
             .near(amount)
@@ -150,7 +156,8 @@ impl Chain {
             .get(signer)
             .ok_or_else(|| anyhow!("no key configured for {signer}"))?
             .clone();
-        let _guard = self.tx_lock.lock().await;
+        let lock = self.lock_for(signer);
+        let _guard = lock.lock().await;
         let res = Contract(contract.clone())
             .call_function(method, args)
             .transaction()
