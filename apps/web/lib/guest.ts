@@ -44,14 +44,26 @@ export function forgetGuest() {
 
 /** Ask the server to fund the guest's account (gas money and demo USDC). Safe to call again. */
 export async function fundGuest(g: GuestIdentity): Promise<{ usdc: string; funded: boolean }> {
-  const r = await fetch("/api/guest", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ public_key: g.publicKey }),
-  });
-  const b = await r.json();
-  if (!r.ok) throw new Error(b.error ?? `HTTP ${r.status}`);
-  return b;
+  // Funding takes several seconds, long enough for a flaky connection to drop the request. The endpoint is
+  // idempotent (an already-funded account costs nothing), so retrying is safe.
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const r = await fetch("/api/guest", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ public_key: g.publicKey }),
+      });
+      const b = await r.json();
+      if (!r.ok) throw Object.assign(new Error(b.error ?? `HTTP ${r.status}`), { final: true });
+      return b;
+    } catch (e) {
+      if ((e as { final?: boolean }).final) throw e; // a real answer from the server: do not retry
+      lastError = e;
+      await new Promise((res) => setTimeout(res, 1500));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("could not reach the server");
 }
 
 function providerFor(rpc: string[]) {

@@ -3,11 +3,15 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
-import { Account, JsonRpcProvider, KeyPairSigner, KeyPair } from "near-api-js";
+import { Account, FailoverRpcProvider, JsonRpcProvider, KeyPairSigner, KeyPair } from "near-api-js";
 
 export const NETWORK = process.env.NEAR_NETWORK ?? "testnet";
 export const RPC = process.env.NEAR_RPC ?? (NETWORK === "mainnet" ? "https://free.rpc.fastnear.com" : "https://test.rpc.fastnear.com");
-export const provider = new JsonRpcProvider({ url: RPC });
+// Public RPCs rate-limit; try several in order. NEAR_RPC overrides the primary.
+const FALLBACKS = NETWORK === "mainnet"
+  ? ["https://rpc.mainnet.near.org"]
+  : ["https://near-testnet.drpc.org", "https://archival-rpc.testnet.fastnear.com", "https://rpc.testnet.near.org"];
+export const provider = new FailoverRpcProvider([RPC, ...FALLBACKS].map((url) => new JsonRpcProvider({ url })));
 export const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 
 const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";

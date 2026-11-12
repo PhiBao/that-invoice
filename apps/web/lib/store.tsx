@@ -239,6 +239,7 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
 
   const enableGuest = useCallback(async () => {
     setGuestBusy(true);
+    push({ tone: "ok", title: "Creating your account", detail: "A real NEAR testnet account is being funded with gas money and demo USDC. This takes about 10 seconds." });
     try {
       const g = loadGuest() ?? createGuest();
       setGuest(g);
@@ -246,6 +247,7 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
       setKey("guest");
       localStorage.setItem("thatinvoice.persona", "guest");
       await refreshGuestBalance(g);
+      push({ tone: "ok", title: "Your account is ready", detail: `${g.account.slice(0, 8)}…${g.account.slice(-6)} holds demo USDC. You sign with your own key, in this browser.` });
     } catch (e) {
       push({ tone: "error", title: "Could not create a guest account", detail: e instanceof Error ? e.message : "request failed" });
     } finally {

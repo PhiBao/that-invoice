@@ -92,7 +92,7 @@ export function Header() {
                   style={{ background: persona?.key === "guest" ? "var(--paper)" : "var(--green-wash)" }}
                 >
                   <strong>{guest ? "You" : "Use your own account"}</strong>
-                  <span className="role" style={{ color: "var(--green)" }}>{guestBusy ? "creating…" : "Real account"}</span>
+                  <span className="role" style={{ color: "var(--green)" }}>{guestBusy ? "creating, ~10 s…" : "Real account"}</span>
                   <span className="bio">
                     {guest
                       ? "A real NEAR account whose key lives in this browser. You sign your own transactions."
