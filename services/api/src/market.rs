@@ -26,6 +26,8 @@ const MENU: &[(&str, &str, &str, u64, u64, i64, &str)] = &[
     ("kestrel.endorse-studio.testnet", "Kestrel Audit", "northwind", 1900, 1862, 21, "KA"),
     ("loomlabs.endorse-studio.testnet", "Loom Labs", "acme", 3600, 3492, 30, "LL"),
     ("endorse-studio.testnet", "Studio Nine", "acme", 760, 745, 12, "SN"),
+    // Past due and priced for it: lets a buyer see what a distressed receivable looks like.
+    ("kestrel.endorse-studio.testnet", "Kestrel Audit", "northwind", 3100, 2790, -6, "KA"),
 ];
 
 pub async fn run(st: Shared) {

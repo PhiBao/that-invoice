@@ -8,7 +8,17 @@
   "globalFt": "ft.globals.primitives.testnet",
   "personas": {
     "studio": "endorse-studio.testnet",
-    "acme": "endorse-acme.testnet",
     "fund": "endorse-fund.testnet"
-  }
+  },
+  "dao": {
+    "account": "thatinvoice-acme.sputnikv2.testnet",
+    "proposer": "endorse-acme.testnet",
+    "council": "council.endorse-fund.testnet"
+  },
+  "seedIssuers": [
+    "kestrel.endorse-studio.testnet",
+    "loomlabs.endorse-studio.testnet"
+  ],
+  "seedClient": "northwind.endorse-studio.testnet",
+  "registryLocked": false
 }
