@@ -9,3 +9,4 @@ dist/
 *.db-*
 .DS_Store
 /out/
+*.tsbuildinfo
